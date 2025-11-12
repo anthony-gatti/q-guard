@@ -1,6 +1,6 @@
 package quantum.topo
 
-import quantum.fidelity
+import quantum.Fidelity
 import quantum.edgeLen
 import quantum.maxSearchHops
 import quantum.randGen
@@ -268,6 +268,25 @@ ${links.groupBy { it.n1 to it.n2 }.map { "${it.key.n1.id} ${it.key.n2.id} ${it.v
     }
     
     return result
+  }
+
+  // Estimate end-to-end fidelity along a given entangled path.
+  fun pathEndToEndFidelity(path: Path): Double {
+    if (path.size < 2) return 0.0
+
+    // Werner model: w_out = Π_i w_i, F = (1 + 3 w_out)/4
+    var wProd = 1.0
+
+    path.edges().forEach { edge ->
+        // Find one entangled link on this edge (there may be multiple)
+        val entangledLink = linksBetween(edge).firstOrNull { it.entangled }
+            ?: return 0.0  // no entangled link on this hop
+
+        val w = Fidelity.wFromF(entangledLink.fidelity)
+        wProd *= w
+    }
+
+    return Fidelity.fFromW(wProd)
   }
   
   fun widthPhase2(path: Path) = listOf(path[0].remainingQubits, path.last().remainingQubits,

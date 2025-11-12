@@ -1,5 +1,6 @@
 package quantum.algorithm
 
+import quantum.Fidelity
 import quantum.topo.Edge
 import quantum.topo.Node
 import quantum.topo.Topo
@@ -10,6 +11,8 @@ class FidelityGuaranteedRouting(topo: Topo) : Algorithm(topo) {
   override val name: String = "TEMP-NAME"
   
   val pathsSortedDynamically: MutableList<PickedPath> = mutableListOf()
+
+  val F_TH = 0.8
   
   override fun prepare() {
     utils.require({ topo.isClean() })
@@ -83,7 +86,10 @@ class FidelityGuaranteedRouting(topo: Topo) : Algorithm(topo) {
       }
       
       val succ = topo.getEstablishedEntanglements(p.first(), p.last()).size - oldNumOfPairs
-      logWriter.appendln(""" ${p.map { it.id }}, $width $succ""")
+
+      val estF = topo.pathEndToEndFidelity(p) // estimate e2e fidelity for path
+      val qualified = (succ > 0 && estF >= F_TH) // check if path meets threshold
+      logWriter.appendln(""" ${p.map { it.id }}, $width $succ $estF $qualified""")
     }
   }
 }

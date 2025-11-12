@@ -158,7 +158,7 @@ open class OnlineAlgorithm(topo: Topo, val allowRecoveryPaths: Boolean = true) :
   
   val pathToRecoveryPaths = ReducibleLazyEvaluation<PickedPath, MutableList<RecoveryPath>>({ mutableListOf() })
   
-  override fun P4() {
+  open override fun P4() {
     majorPaths.forEach { pathWithWidth ->
       val (_, width, majorPath) = pathWithWidth
       val oldNumOfPairs = topo.getEstablishedEntanglements(majorPath.first(), majorPath.last()).size  // just for logging

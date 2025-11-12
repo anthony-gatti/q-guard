@@ -89,7 +89,9 @@ class FidelityGuaranteedRouting(topo: Topo) : Algorithm(topo) {
 
       val estF = topo.pathEndToEndFidelity(p) // estimate e2e fidelity for path
       val qualified = (succ > 0 && estF >= F_TH) // check if path meets threshold
-      logWriter.appendln(""" ${p.map { it.id }}, $width $succ $estF $qualified""")
+      val qualifiedSucc = if (qualified) succ else 0
+
+      logWriter.appendln(""" ${p.map { it.id }}, $width $succ $estF $qualified $qualifiedSucc""")
     }
   }
 }

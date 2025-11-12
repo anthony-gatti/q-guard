@@ -1,6 +1,7 @@
 package quantum.topo
 
 import quantum.randGen
+import quantum.Fidelity
 import utils.format
 import utils.padTo
 import utils.require
@@ -53,11 +54,11 @@ class Link(val topo: Topo, val n1: Node, val n2: Node, val l: Double, var entang
   fun tryEntanglement(): Boolean {
     val b = assigned && p >= randGen.nextDouble()
     entangled = b
-    if (b) {
-        // TODO: replace 0.9 with your chosen base link fidelity model
-        fidelity = 0.9
+    fidelity = if (b) {
+        // Freshly generated entanglement, age t = 0, using paper’s model
+        Fidelity.freshLinkFidelityDefault()
     } else {
-        fidelity = 0.0
+        0.0
     }
     return b
   }

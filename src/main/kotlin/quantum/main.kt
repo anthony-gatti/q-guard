@@ -146,7 +146,8 @@ fun simpleTest() {
     
     val algorithms = listOf(
       // OnlineAlgorithm(Topo(topo)),
-      FidelityGuaranteedRouting(Topo(topo))
+      // FidelityGuaranteedRouting(Topo(topo)),
+      FidelityGuaranteedOnlineAlgorithm(topo)
 //      , OnlineAlgorithmWithRecoveryPaths(Topo(topo))
 //      , BotCap(Topo(topo)),  CreationRate(Topo(topo)),
 //      SumDist(Topo(topo)),

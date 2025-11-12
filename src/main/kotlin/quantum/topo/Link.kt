@@ -10,6 +10,8 @@ class Link(val topo: Topo, val n1: Node, val n2: Node, val l: Double, var entang
   companion object {
     var cnt = 0
   }
+
+  var fidelity: Double = 1.0
   
   fun theOtherEndOf(n: Node) = if (n1 == n) n2 else if (n2 == n) n1 else throw Exception("No such node")
   fun contains(n: Node) = n1 == n || n2 == n
@@ -51,6 +53,12 @@ class Link(val topo: Topo, val n1: Node, val n2: Node, val l: Double, var entang
   fun tryEntanglement(): Boolean {
     val b = assigned && p >= randGen.nextDouble()
     entangled = b
+    if (b) {
+        // TODO: replace 0.9 with your chosen base link fidelity model
+        fidelity = 0.9
+    } else {
+        fidelity = 0.0
+    }
     return b
   }
   
@@ -58,6 +66,7 @@ class Link(val topo: Topo, val n1: Node, val n2: Node, val l: Double, var entang
     assigned = false
     entangled = false
     utilized = false
+    fidelity = 0.0
   }
   
   override fun toString(): String {

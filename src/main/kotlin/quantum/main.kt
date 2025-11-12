@@ -47,7 +47,8 @@ fun sim() {
           CreationRate(Topo(topo)),
           SingleLink(Topo(topo)),
           GreedyGeographicRouting(Topo(topo)),
-          GreedyHopRouting(Topo(topo))
+          GreedyHopRouting(Topo(topo)),
+          FidelityGuaranteedRouting(Topo(topo))
         )
         
         if (n == nList.first() && q == qList.first() && p == pList.first() && d == dList.first() && k == kList.first()) {
@@ -144,7 +145,8 @@ fun simpleTest() {
     println(topo.getStatistics())
     
     val algorithms = listOf(
-      OnlineAlgorithm(Topo(topo))
+      // OnlineAlgorithm(Topo(topo)),
+      FidelityGuaranteedRouting(Topo(topo))
 //      , OnlineAlgorithmWithRecoveryPaths(Topo(topo))
 //      , BotCap(Topo(topo)),  CreationRate(Topo(topo)),
 //      SumDist(Topo(topo)),
@@ -267,12 +269,12 @@ class Main {
       }
       
       simpleTest()
-      try {
-        val l = args.map { it.toInt() }
-        if (l.isNotEmpty()) nList = l
-      } catch (e: Exception) {
-      }
-      sim()
+      // try {
+      //   val l = args.map { it.toInt() }
+      //   if (l.isNotEmpty()) nList = l
+      // } catch (e: Exception) {
+      // }
+      // sim()
     }
   }
 }

@@ -1,5 +1,6 @@
 package quantum.topo
 
+import quantum.fidelity
 import quantum.edgeLen
 import quantum.maxSearchHops
 import quantum.randGen

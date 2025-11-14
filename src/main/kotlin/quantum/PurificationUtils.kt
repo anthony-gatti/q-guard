@@ -74,63 +74,56 @@ fun tryPurifyOnEdge(
 }
 
 /**
- * Deterministic purification cost table for EXG calculation ONLY.
+ * PurificationCostTable:
  *
- * Assumes:
- *  - Werner inputs
- *  - BBPSSW protocol (Fidelity.purifyWernerOnce)
- *  - Always-success model: repeatedly apply F' from purifyWernerOnce(F,F)
- *    until F >= targetF or we stop making progress.
+ * Given an initial Werner fidelity F0 and a target per-hop fidelity Ftarget,
+ * return the minimal number of *extra* pairs needed in the ideal BBPSSW model
+ * (always-success purification, infinite pool of identical F0 pairs).
  *
- * Returned cost = number of *extra* pairs consumed (successful "sacrifice one, keep one" steps).
+ * - Each BBPSSW *round* takes 2 input pairs and returns 1 output pair.
+ *   We treat that as "1 extra pair consumed" for cost purposes.
+ * - If the Werner map converges below Ftarget (no further improvement),
+ *   we return Int.MAX_VALUE to signal "infeasible".
  */
 object PurificationCostTable {
-    // Fidelity values are clamped into [0.25, 0.999] and discretized to 1e-3
-    private const val F_MIN = 0.25
-    private const val F_MAX = 0.999
-    private const val STEP = 0.001
-
-    private fun indexForF(F: Double): Int {
-        val clamped = F.coerceIn(F_MIN, F_MAX)
-        return (clamped / STEP).roundToInt()
-    }
-
-    // Cache keyed by (F0_index, F_target_index) -> cost
-    private val cache = mutableMapOf<Pair<Int, Int>, Int>()
 
     /**
-     * Minimal deterministic cost (in extra pairs) to raise a Werner fidelity
-     * from F0 to at least targetF, under "always succeed" BBPSSW.
+     * Compute minimal number of extra pairs (cost) needed to reach Ftarget
+     * starting from F0 using ideal BBPSSW on Werner states.
      *
-     * If F0 >= targetF already, cost = 0.
-     * If we cannot make progress (F' <= F), returns Int.MAX_VALUE as "infeasible".
+     * @param F0        initial fidelity (Werner)
+     * @param Ftarget   required per-hop target fidelity
+     * @param maxRounds safety cap on the number of purification rounds to try
      */
-    fun minCostToReach(F0: Double, targetF: Double): Int {
-        if (F0 + 1e-12 >= targetF) return 0
+    fun minCostToReach(
+        F0: Double,
+        Ftarget: Double,
+        maxRounds: Int = 20
+    ): Int {
+        // If we already meet the target, no extra pairs needed.
+        if (F0 + 1e-12 >= Ftarget) return 0
 
-        val i0 = indexForF(F0)
-        val iT = indexForF(targetF)
-        val key = i0 to iT
+        var currentF = F0
+        var cost = 0
 
-        cache[key]?.let { return it }
+        repeat(maxRounds) {
+            // Idealized symmetric BBPSSW: both inputs have the same fidelity
+            val (Fp, _) = Fidelity.purifyWernerOnce(currentF, currentF)
 
-        var F = F0.coerceIn(F_MIN, F_MAX)
-        var attempts = 0
-        var safety = 1000  // guard against weird convergence
-
-        while (F + 1e-12 < targetF && safety-- > 0) {
-            val (Fp, _) = Fidelity.purifyWernerOnce(F, F)
-            if (Fp <= F + 1e-12) {
-                // No progress -> treat as infeasible
-                attempts = Int.MAX_VALUE
-                break
+            // If we don't improve, we've hit the fixed point; can't reach target.
+            if (Fp <= currentF + 1e-12) {
+                return Int.MAX_VALUE
             }
-            F = Fp
-            attempts += 1
+
+            cost += 1
+            currentF = Fp
+
+            if (currentF + 1e-12 >= Ftarget) {
+                return cost
+            }
         }
 
-        val cost = attempts
-        cache[key] = cost
-        return cost
+        // If we hit maxRounds without reaching target, treat as infeasible.
+        return Int.MAX_VALUE
     }
 }

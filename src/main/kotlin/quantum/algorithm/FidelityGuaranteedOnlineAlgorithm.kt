@@ -236,35 +236,90 @@ class FidelityGuaranteedOnlineAlgorithm(
                     }
                 }
 
-                // === Deterministic purification cost for EXG (table-based) ===
-                // This uses *fresh* per-hop fidelities from the physical model, not
-                // the current entangled pool, and assumes purification always succeeds.
-                val hopInfoForExg = topo.perHopFreshF(p)
-                val totalPurCostExg = hopInfoForExg.fold(0) { acc, (_, _, F0) ->
-                    val cost = PurificationCostTable.minCostToReach(F0, perHopTargetNow)
-                    acc + if (cost == Int.MAX_VALUE) 0 else cost
+                // --- EXG metric with width-aware purification cost (ideal model) ---
+                val hopInfoForExg = topo.perHopFreshF(p)  // list of (edge, ?, F0)
+
+                data class HopCostLog(
+                    val uId: Int,
+                    val vId: Int,
+                    val F0: Double,
+                    val cost: Int,
+                    val feasible: Boolean
+                )
+
+                val hopCosts = mutableListOf<HopCostLog>()
+                var totalPurCostExg = 0
+                var exgFeasible = true
+
+                // width is the bottleneck width of this major path (from pathWithWidth)
+                val perHopBudget = (width - 1).coerceAtLeast(0)
+
+                for ((edge, _, F0) in hopInfoForExg) {
+                    val rawCost = PurificationCostTable.minCostToReach(F0, perHopTargetNow)
+
+                    val hopFeasible: Boolean
+                    val costForSum: Int
+
+                    if (rawCost == Int.MAX_VALUE) {
+                        // Cannot reach target even with infinite pairs -> infeasible hop
+                        hopFeasible = false
+                        costForSum = Int.MAX_VALUE
+                    } else if (rawCost > perHopBudget) {
+                        // Would need more extra pairs than this width can realistically supply
+                        hopFeasible = false
+                        costForSum = rawCost
+                    } else {
+                        hopFeasible = true
+                        costForSum = rawCost
+                        totalPurCostExg += rawCost
+                    }
+
+                    hopCosts += HopCostLog(
+                        uId = edge.n1.id,
+                        vId = edge.n2.id,
+                        F0 = F0,
+                        cost = costForSum,
+                        feasible = hopFeasible
+                    )
+
+                    if (!hopFeasible) {
+                        exgFeasible = false
+                    }
                 }
 
-                // Swap success product on this path (q^{#internal nodes})
+                // q^(#internal nodes) as before
                 val qPath = Math.pow(topo.q, (p.size - 2).coerceAtLeast(0).toDouble())
 
-                // For EXG, we assume purification *can* raise each hop to its target,
-                // so feasibility is based on the design, not the current predFRepaired.
-                // The deterministic cost comes from totalPurCostExg.
-                val exgNumerator = width * qPath
-                val exgDenom = 1.0 + totalPurCostExg.toDouble()
-                val exg = if (exgDenom > 0) exgNumerator / exgDenom else 0.0
-
-                if (i==1) {
-                    logWriter.appendln(
-                        " EXG ${p.map { it.id }} " +
-                            "predF_raw=${predFRepaired.format(3)} " +
-                            "Fth=${FTH.format(3)} " +
-                            "width=$width qPath=${qPath.format(3)} " +
-                            "CpurRuntime=$totalPurCostOnP CpurEXG=$totalPurCostExg " +
-                            "EXG=${exg.format(4)}"
-                    )
+                val exg = if (exgFeasible) {
+                    val exgNumerator = width * qPath
+                    val exgDenom = 1.0 + totalPurCostExg.toDouble()
+                    if (exgDenom > 0.0) exgNumerator / exgDenom else 0.0
+                } else {
+                    0.0
                 }
+
+                val hopCostSummary = hopCosts.joinToString(
+                    prefix = "[",
+                    postfix = "]"
+                ) { hc ->
+                    val costStr = if (hc.cost == Int.MAX_VALUE) "INF" else hc.cost.toString()
+                    "(${hc.uId},${hc.vId}):F0=${hc.F0.format(3)},cost=$costStr,ok=${hc.feasible}"
+                }
+
+                logWriter.appendln(
+                    " EXG ${p.map { it.id }} " +
+                        "predF_raw=${predFRepaired.format(3)} " +
+                        "Fth=${FTH.format(3)} " +
+                        "width=$width qPath=${qPath.format(3)} " +
+                        "CpurRuntime=$totalPurCostOnP CpurEXG=$totalPurCostExg " +
+                        "feasible=$exgFeasible hopCosts=$hopCostSummary " +
+                        "EXG=${exg.format(4)}"
+                )
+
+                logWriter.appendln(
+                    " EXG-PATH ${p.map { it.id }} " +
+                        "widthUnit=$i totalPurCost=$totalPurCostOnP"
+                )
 
                 lastSuccessfulPathForLog = p
 

@@ -288,6 +288,32 @@ ${links.groupBy { it.n1 to it.n2 }.map { "${it.key.n1.id} ${it.key.n2.id} ${it.v
 
     return Fidelity.fFromW(wProd)
   }
+
+  // Predict end-to-end fidelity if each hop uses a freshly created pair (one depolarizing hit)
+  // Uses the representative parallel link on each edge to read tau.
+  fun predictedEndToEndFidelity(path: Path): Double {
+    if (path.size < 2) return 0.0
+    var wProd = 1.0
+    path.edges().forEach { e ->
+        val d = +(e.n1.loc - e.n2.loc)                       // km
+        val tau = (Link.TAU_MIN + Link.TAU_SLOPE * d).coerceAtLeast(1e-6)
+        val F0  = Fidelity.freshLinkFidelity(tau)
+        val w   = Fidelity.wFromF(F0).coerceIn(-1.0/3.0, 1.0)
+        wProd *= w
+    }
+    return Fidelity.fFromW(wProd)
+  }
+
+  // For a given physical path, report (edge, tau, F0, w) per hop
+  fun perHopFreshF(path: Path): List<Triple<Edge, Double, Double>> {
+    if (path.size < 2) return emptyList()
+    return path.edges().map { e ->
+        val d   = +(e.n1.loc - e.n2.loc)
+        val tau = (Link.TAU_MIN + Link.TAU_SLOPE * d).coerceAtLeast(1e-6)
+        val F0  = Fidelity.freshLinkFidelity(tau)
+        Triple(e, tau, F0)
+    }
+  }
   
   fun widthPhase2(path: Path) = listOf(path[0].remainingQubits, path.last().remainingQubits,
     path.dropLast(1).drop(1).map { it.remainingQubits }.min()?.div(2) ?: Int.MAX_VALUE,

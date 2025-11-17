@@ -33,7 +33,56 @@ class FidelityGuaranteedOnlineAlgorithm(
         return reqFth[key] ?: F_TH  // fallback to your current global default
     }
 
-    // Same Q-CAST P4 logic, but with fidelity logging / qualification
+    private data class PathExgResult(
+        val path: List<Node>,
+        val perHopTarget: Double,
+        val exg: Double,
+        val feasible: Boolean,
+        val totalPurCostExg: Int
+    )
+
+    private fun computeExgForPath(
+        path: List<Node>,
+        width: Int,
+        fth: Double
+    ): PathExgResult {
+        if (path.size < 2) {
+            return PathExgResult(path, 0.0, 0.0, false, Int.MAX_VALUE)
+        }
+
+        val hops = path.size - 1
+        val perHopTarget = Fidelity.perHopTargetF(fth, hops)
+
+        val hopInfo = topo.perHopFreshF(path)  // (edge, tau, F0)
+        val perHopBudget = (width - 1).coerceAtLeast(0)
+
+        var totalPurCostExg = 0
+        var exgFeasible = true
+
+        for ((_, _, F0) in hopInfo) {
+            val rawCost = PurificationCostTable.minCostToReach(F0, perHopTarget)
+
+            val hopFeasible = rawCost != Int.MAX_VALUE && rawCost <= perHopBudget
+            if (!hopFeasible) {
+                exgFeasible = false
+                // you can early-return here if you want to short-circuit
+            } else {
+                totalPurCostExg += rawCost
+            }
+        }
+
+        val qPath = Math.pow(topo.q, (path.size - 2).coerceAtLeast(0).toDouble())
+        val exg = if (exgFeasible) {
+            val num = width * qPath
+            val denom = 1.0 + totalPurCostExg.toDouble()
+            if (denom > 0.0) num / denom else 0.0
+        } else {
+            0.0
+        }
+
+        return PathExgResult(path, perHopTarget, exg, exgFeasible, totalPurCostExg)
+    }
+
     override fun P4() {
         majorPaths.forEach { pathWithWidth ->
             var lastSuccessfulPathForLog: List<Node>? = null
@@ -45,22 +94,32 @@ class FidelityGuaranteedOnlineAlgorithm(
             val FTH = fthFor(majorPath.first(), majorPath.last())
             val perHopTarget = Fidelity.perHopTargetF(FTH, hops)
 
-            // (Optional debug) See which hops are below the per-hop target using *fresh* F0
-            val hopInfo = topo.perHopFreshF(majorPath)  // you added this earlier in Step 1
-            val weak = hopInfo.filter { (_, _, F0) -> F0 + 1e-12 < perHopTarget }
-            logWriter.appendln("PRED ${majorPath.map { it.id }} hops=$hops predF=$predF targetHopF=$perHopTarget weak=${weak.map { (e,_,F0)->"(${e.n1.id},${e.n2.id})->${"%.3f".format(F0)}" }}")
+            // Debug: which hops are weak on the *fresh* link fidelity
+            val hopInfoMajor = topo.perHopFreshF(majorPath)
+            val weakStr = hopInfoMajor
+                .filter { triple -> triple.third + 1e-12 < perHopTarget }
+                .joinToString(prefix = "[", postfix = "]") { triple ->
+                    val edge = triple.first
+                    val F0 = triple.third
+                    "(${edge.n1.id},${edge.n2.id})->${"%.3f".format(F0)}"
+                }
 
+            logWriter.appendln(
+                "PRED ${majorPath.map { node -> node.id }} " +
+                    "hops=$hops predF=$predF targetHopF=$perHopTarget weak=$weakStr"
+            )
 
+            // For total successes across all width units
             val oldNumOfPairs = topo
                 .getEstablishedEntanglements(majorPath.first(), majorPath.last())
                 .size
 
             val recoveryPaths = this.recoveryPaths[pathWithWidth]!!
-                .sortedBy { it.third.size * 10000 + majorPath.indexOf(it.third.first()) }
+                .sortedBy { tup -> tup.third.size * 10000 + majorPath.indexOf(tup.third.first()) }
 
-            recoveryPaths.forEach { (_, w, p) ->
+            recoveryPaths.forEach { (src, w, p) ->
                 val available = p.edges()
-                    .map { (n1, n2) -> n1.links.count { it.contains(n2) && it.entangled } }
+                    .map { (n1, n2) -> n1.links.count { link -> link.contains(n2) && link.entangled } }
                     .min()!!
                 pathToRecoveryPaths[pathWithWidth].add(
                     RecoveryPath(p, w, 0, available)
@@ -76,31 +135,31 @@ class FidelityGuaranteedOnlineAlgorithm(
             for (i in 1..width) {
                 // for w-width major path, treat it as w different paths, and repair separately
 
-                // find all broken edges on the major path
+                // ===== Q-CAST: find broken edges and candidate recovery paths =====
                 val brokenEdges = java.util.LinkedList(
                     edges.filter { (i1, i2) ->
                         val (n1, n2) = majorPath[i1] to majorPath[i2]
-                        n1.links.any {
-                            it.contains(n2) && it.assigned && it.notSwapped() && !it.entangled
+                        n1.links.any { link ->
+                            link.contains(n2) && link.assigned && link.notSwapped() && !link.entangled
                         }
                     }
                 )
 
-                val edgeToRps = brokenEdges
-                    .map { it to mutableListOf<Path>() }
-                    .toMap()
-                val rpToEdges = recoveryPaths
-                    .map { it.third to mutableListOf<Pair<Int, Int>>() }
-                    .toMap()
+                val edgeToRps: MutableMap<Pair<Int, Int>, MutableList<Path>> =
+                    brokenEdges.associateWith { mutableListOf<Path>() }.toMutableMap()
 
-                recoveryPaths.forEach { (_, _, rp) ->  // rp is calculated from P2
-                    val (s1, s2) = majorPath.indexOf(rp.first()) to majorPath.indexOf(rp.last())
+                val rpToEdges: MutableMap<Path, MutableList<Pair<Int, Int>>> =
+                    recoveryPaths.map { it.third to mutableListOf<Pair<Int, Int>>() }.toMap().toMutableMap()
+
+                recoveryPaths.forEach { (_, _, rp) ->
+                    val s1 = majorPath.indexOf(rp.first())
+                    val s2 = majorPath.indexOf(rp.last())
 
                     (s1..s2 - 1).zip(s1 + 1..s2)
-                        .filter { it in brokenEdges }
-                        .forEach {
-                            rpToEdges[rp]!!.add(it)
-                            edgeToRps[it]!!.add(rp)
+                        .filter { edge -> edge in brokenEdges }
+                        .forEach { edge ->
+                            rpToEdges[rp]!!.add(edge)
+                            edgeToRps[edge]!!.add(rp)
                         }
                 }
 
@@ -115,10 +174,10 @@ class FidelityGuaranteedOnlineAlgorithm(
                     var next = 0
 
                     tryRp@ for (rp in edgeToRps[brokenEdge]!!
-                        .filter { rpToWidth[it]!! > 0 && it !in realPickedRps }
-                        .sortedBy {
-                            majorPath.indexOf(it.first()) * 10000 +
-                                majorPath.indexOf(it.last())
+                        .filter { rpCandidate -> rpToWidth[rpCandidate]!! > 0 && rpCandidate !in realPickedRps }
+                        .sortedBy { rpCandidate ->
+                            majorPath.indexOf(rpCandidate.first()) * 10000 +
+                                majorPath.indexOf(rpCandidate.last())
                         }) {
 
                         if (majorPath.indexOf(rp.first()) < next) continue
@@ -148,11 +207,11 @@ class FidelityGuaranteedOnlineAlgorithm(
                         repairedEdges.add(brokenEdge)
                         pickedRps.add(rp)
 
-                        (realPickedRps - pickedRps).forEach {
-                            rpToWidth[it] = rpToWidth[it]!! + 1
+                        (realPickedRps - pickedRps).forEach { rpOld ->
+                            rpToWidth[rpOld] = rpToWidth[rpOld]!! + 1
                         }
-                        (pickedRps - realPickedRps).forEach {
-                            rpToWidth[it] = rpToWidth[it]!! - 1
+                        (pickedRps - realPickedRps).forEach { rpNew ->
+                            rpToWidth[rpNew] = rpToWidth[rpNew]!! - 1
                         }
 
                         realPickedRps = pickedRps
@@ -161,19 +220,20 @@ class FidelityGuaranteedOnlineAlgorithm(
                     }
 
                     if (!repaired) {
-                        // this major path cannot be repaired
+                        // this major path cannot be fully repaired for this width unit
                         break
                     }
                 }
 
+                // Build the repaired path p using the chosen recovery paths
                 val p = realPickedRps.fold(majorPath) { acc, rp ->
-                    val pathData = pathToRecoveryPaths[pathWithWidth].first { it.path == rp }
+                    val pathData = pathToRecoveryPaths[pathWithWidth].first { rpData -> rpData.path == rp }
                     pathData.taken++
 
                     val toAdd = rp.edges()
                     val toDelete = acc
-                        .dropWhile { it != rp.first() }
-                        .dropLastWhile { it != rp.last() }
+                        .dropWhile { node -> node != rp.first() }
+                        .dropLastWhile { node -> node != rp.last() }
                         .edges()
 
                     val edgesOfNewPathAndCycles = acc.edges().toSet() - toDelete + toAdd
@@ -186,25 +246,65 @@ class FidelityGuaranteedOnlineAlgorithm(
                     ).second
                 }
 
-                // --- Re-gate on the repaired path (hop count may have changed) ---
+                // Debug for the repaired path as before
                 val predFRepaired = topo.predictedEndToEndFidelity(p)
-                val perHopTargetNow = Fidelity.perHopTargetF(FTH, p.size - 1)
-                if (i == 1) { // only on the first width unit
-                    logWriter.appendln("REPAIR-PRED ${p.map { it.id }} hops=${p.size-1} predF=${predFRepaired} targetHopF=${perHopTargetNow}")
+                val perHopTargetNowP = Fidelity.perHopTargetF(FTH, p.size - 1)
+                // if (i == 1) {
+                //     logWriter.appendln(
+                //         "REPAIR-PRED ${p.map { node -> node.id }} hops=${p.size - 1} " +
+                //             "predF=${predFRepaired} targetHopF=${perHopTargetNowP}"
+                //     )
+                // }
+
+                // ===== NEW: EXG-based choice between majorPath and repaired path =====
+                val exgMajor = computeExgForPath(majorPath, width, FTH)
+                val exgRepaired = computeExgForPath(p, width, FTH)
+
+                val feasibleCandidates = listOf(exgMajor, exgRepaired).filter { res -> res.feasible }
+                val best: PathExgResult? = if (feasibleCandidates.isEmpty()) {
+                    null
+                } else {
+                    feasibleCandidates.maxBy { res -> res.exg }
                 }
 
-                var totalPurCostOnP = 0
+                if (best == null) {
+                    // No EXG-feasible span for this width unit → skip swaps entirely
+                    logWriter.appendln(
+                        " EXG-SKIP ${majorPath.map { node -> node.id }} widthUnit=$i " +
+                            "reason=no_feasible_span " +
+                            "EXGmajor=${exgMajor.exg.format(4)} " +
+                            "EXGrepaired=${exgRepaired.exg.format(4)}"
+                    )
+                    continue
+                }
 
-                // === Purification (optional) — local per-hop thresholds ===
+                val chosenPath = best.path
+                val perHopTargetNow = best.perHopTarget
+
+                if (i == 1) {
+                    logWriter.appendln(
+                    " EXG-CHOSEN path=${chosenPath.map { node -> node.id }} widthUnit=$i " +
+                        "EXGmajor=${exgMajor.exg.format(4)} " +
+                        "EXGrepaired=${exgRepaired.exg.format(4)} " +
+                        "EXGchosen=${best.exg.format(4)}"
+                    )
+                }
+
+                // Update for later fidelity logging
+                lastSuccessfulPathForLog = chosenPath
+
+                // ===== Runtime purification only on the chosenPath =====
+                var totalPurCostOnChosen = 0
+
                 if (ENABLE_PURIFICATION) {
-                    val hopsOnP = p.dropLast(1).zip(p.drop(1))
+                    val hopsOnChosen = chosenPath.dropLast(1).zip(chosenPath.drop(1))
 
-                    for ((u, v) in hopsOnP) {
+                    for ((u, v) in hopsOnChosen) {
                         while (true) {
                             val pool = topo.linksBetween(u, v)
-                                .filter { it.entangled && it.notSwapped() && !it.utilized }
+                                .filter { link -> link.entangled && link.notSwapped() && !link.utilized }
 
-                            val bestF = pool.maxBy { it.fidelity }?.fidelity ?: 0.0
+                            val bestF = pool.maxBy { link -> link.fidelity }?.fidelity ?: 0.0
 
                             // stop if fewer than 2 pairs, or we've already reached the local target
                             if (pool.size < 2) break
@@ -218,7 +318,7 @@ class FidelityGuaranteedOnlineAlgorithm(
                                 C_PUR
                             )
 
-                            totalPurCostOnP += res.costUnits
+                            totalPurCostOnChosen += res.costUnits
 
                             logWriter.appendln(
                                 " PUR-LOCAL (${u.id},${v.id}) " +
@@ -229,129 +329,49 @@ class FidelityGuaranteedOnlineAlgorithm(
                                     "cost=${res.costUnits} " +
                                     "success=${res.success}"
                             )
-
-                            // If we failed and burned pairs, the next loop iteration will re-check
-                            // pool.size and bestF and exit if there's nothing left or threshold hit.
                         }
                     }
                 }
 
-                // --- EXG metric with width-aware purification cost (ideal model) ---
-                val hopInfoForExg = topo.perHopFreshF(p)  // list of (edge, ?, F0)
-
-                data class HopCostLog(
-                    val uId: Int,
-                    val vId: Int,
-                    val F0: Double,
-                    val cost: Int,
-                    val feasible: Boolean
-                )
-
-                val hopCosts = mutableListOf<HopCostLog>()
-                var totalPurCostExg = 0
-                var exgFeasible = true
-
-                // width is the bottleneck width of this major path (from pathWithWidth)
-                val perHopBudget = (width - 1).coerceAtLeast(0)
-
-                for ((edge, _, F0) in hopInfoForExg) {
-                    val rawCost = PurificationCostTable.minCostToReach(F0, perHopTargetNow)
-
-                    val hopFeasible: Boolean
-                    val costForSum: Int
-
-                    if (rawCost == Int.MAX_VALUE) {
-                        // Cannot reach target even with infinite pairs -> infeasible hop
-                        hopFeasible = false
-                        costForSum = Int.MAX_VALUE
-                    } else if (rawCost > perHopBudget) {
-                        // Would need more extra pairs than this width can realistically supply
-                        hopFeasible = false
-                        costForSum = rawCost
-                    } else {
-                        hopFeasible = true
-                        costForSum = rawCost
-                        totalPurCostExg += rawCost
-                    }
-
-                    hopCosts += HopCostLog(
-                        uId = edge.n1.id,
-                        vId = edge.n2.id,
-                        F0 = F0,
-                        cost = costForSum,
-                        feasible = hopFeasible
+                if (totalPurCostOnChosen > 0) {
+                    logWriter.appendln(
+                        " EXG-PATH ${chosenPath.map { node -> node.id }} " +
+                            "widthUnit=$i CpurRuntime=$totalPurCostOnChosen"
                     )
-
-                    if (!hopFeasible) {
-                        exgFeasible = false
-                    }
                 }
 
-                // q^(#internal nodes) as before
-                val qPath = Math.pow(topo.q, (p.size - 2).coerceAtLeast(0).toDouble())
+                // ===== Swaps only along the chosenPath (same pattern as before) =====
+                chosenPath
+                    .dropLast(2)
+                    .zip(chosenPath.drop(1).dropLast(1))
+                    .zip(chosenPath.drop(2))
+                    .forEach { (n12, next) ->
+                        val (prev, n) = n12
 
-                val exg = if (exgFeasible) {
-                    val exgNumerator = width * qPath
-                    val exgDenom = 1.0 + totalPurCostExg.toDouble()
-                    if (exgDenom > 0.0) exgNumerator / exgDenom else 0.0
-                } else {
-                    0.0
-                }
+                        val prevLinks = n.links
+                            .filter { link ->
+                                link.entangled && !link.swappedAt(n) && link.contains(prev) && !link.utilized
+                            }
+                            .sortedBy { link -> link.id }
+                            .take(1)
+                        val nextLinks = n.links
+                            .filter { link ->
+                                link.entangled && !link.swappedAt(n) && link.contains(next) && !link.utilized
+                            }
+                            .sortedBy { link -> link.id }
+                            .take(1)
 
-                val hopCostSummary = hopCosts.joinToString(
-                    prefix = "[",
-                    postfix = "]"
-                ) { hc ->
-                    val costStr = if (hc.cost == Int.MAX_VALUE) "INF" else hc.cost.toString()
-                    "(${hc.uId},${hc.vId}):F0=${hc.F0.format(3)},cost=$costStr,ok=${hc.feasible}"
-                }
-
-                logWriter.appendln(
-                    " EXG ${p.map { it.id }} " +
-                        "predF_raw=${predFRepaired.format(3)} " +
-                        "Fth=${FTH.format(3)} " +
-                        "width=$width qPath=${qPath.format(3)} " +
-                        "CpurRuntime=$totalPurCostOnP CpurEXG=$totalPurCostExg " +
-                        "feasible=$exgFeasible hopCosts=$hopCostSummary " +
-                        "EXG=${exg.format(4)}"
-                )
-
-                logWriter.appendln(
-                    " EXG-PATH ${p.map { it.id }} " +
-                        "widthUnit=$i totalPurCost=$totalPurCostOnP"
-                )
-
-                lastSuccessfulPathForLog = p
-
-                // same swap logic as OnlineAlgorithm
-                p.dropLast(2).zip(p.drop(1).dropLast(1)).zip(p.drop(2)).forEach { (n12, next) ->
-                    val (prev, n) = n12
-
-                    val prevLinks = n.links
-                        .filter { it.entangled && !it.swappedAt(n) && it.contains(prev) && !it.utilized }
-                        .sortedBy { it.id }
-                        .take(1)
-                    val nextLinks = n.links
-                        .filter { it.entangled && !it.swappedAt(n) && it.contains(next) && !it.utilized }
-                        .sortedBy { it.id }
-                        .take(1)
-
-                    prevLinks.zip(nextLinks).forEach { (l1, l2) ->
-                        n.attemptSwapping(l1, l2)
-                        l1.utilize()
-                        if (next == p.last()) {
-                            l2.utilize()
+                        prevLinks.zip(nextLinks).forEach { (l1, l2) ->
+                            n.attemptSwapping(l1, l2)
+                            l1.utilize()
+                            if (next == chosenPath.last()) {
+                                l2.utilize()
+                            }
                         }
                     }
-                }
-
-                logWriter.appendln(
-                    " EXG-PATH ${p.map { it.id }} " +
-                    "widthUnit=$i totalPurCost=$totalPurCostOnP"
-                )
             }
 
-            // === HERE: identical succ logic, but we add fidelity + qualifiedSucc ===
+            // === Same success / fidelity logic, now using lastSuccessfulPathForLog ===
             var succ = 0
             if (majorPath.size > 2) {
                 succ = topo.getEstablishedEntanglements(
@@ -360,13 +380,13 @@ class FidelityGuaranteedOnlineAlgorithm(
                 ).size - oldNumOfPairs
             } else {
                 val SDlinks = majorPath.first().links
-                    .filter {
-                        it.entangled &&
-                            !it.swappedAt(majorPath.first()) &&
-                            it.contains(majorPath.last()) &&
-                            !it.utilized
+                    .filter { link ->
+                        link.entangled &&
+                            !link.swappedAt(majorPath.first()) &&
+                            link.contains(majorPath.last()) &&
+                            !link.utilized
                     }
-                    .sortedBy { it.id }
+                    .sortedBy { link -> link.id }
 
                 if (SDlinks.isNotEmpty()) {
                     succ = SDlinks.size.coerceAtMost(width)
@@ -376,7 +396,6 @@ class FidelityGuaranteedOnlineAlgorithm(
                 }
             }
 
-            // fidelity instrumentation
             val estF =
                 if (succ > 0 && lastSuccessfulPathForLog != null && lastSuccessfulPathForLog!!.size > 1) {
                     topo.pathEndToEndFidelity(lastSuccessfulPathForLog!!)
@@ -385,14 +404,15 @@ class FidelityGuaranteedOnlineAlgorithm(
             val qualifiedSucc = if (succ > 0 && estF + 1e-12 >= FTH) succ else 0
 
             logWriter.appendln(
-                """ ${majorPath.map { it.id }}, $width $succ $estF $qualifiedSucc"""
+                """ ${majorPath.map { node -> node.id }}, $width $succ $estF $qualifiedSucc"""
             )
 
-            pathToRecoveryPaths[pathWithWidth].forEach {
-                logWriter.appendln(
-                    """  ${it.path.map { it.id }}, $width ${it.available} ${it.taken}"""
-                )
-            }
+            // pathToRecoveryPaths[pathWithWidth].forEach { rpData ->
+            //     val ids = rpData.path.map { node -> node.id }
+            //     logWriter.appendln(
+            //         """  $ids, $width ${rpData.available} ${rpData.taken}"""
+            //     )
+            // }
         }
 
         logWriter.appendln()

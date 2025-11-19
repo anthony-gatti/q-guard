@@ -36,40 +36,72 @@ fun sim() {
         (0 until n).shuffled(randGen).take(2 * nsd).chunked(2).map { it.toPair() }
       }
       
+      // val algorithms = synchronized(topo) {
+      //   topo.q = q
+      //   topo.k = k
+      //   topo.alpha = alpha
+        
+      //   val algorithms = mutableListOf(
+      //     OnlineAlgorithm(Topo(topo)),
+      //     OnlineAlgorithm(Topo(topo), false),
+      //     CreationRate(Topo(topo)),
+      //     SingleLink(Topo(topo)),
+      //     GreedyGeographicRouting(Topo(topo)),
+      //     GreedyHopRouting(Topo(topo)),
+      //     FidelityGuaranteedRouting(Topo(topo))
+      //   )
+        
+      //   if (n == nList.first() && q == qList.first() && p == pList.first() && d == dList.first() && k == kList.first()) {
+      //     algorithms.addAll(listOf(
+      //       BotCap(Topo(topo)),
+      //       SumDist(Topo(topo)), MultiMetric(Topo(topo)),
+            
+      //       BotCap(Topo(topo), false), CreationRate(Topo(topo), false),
+      //       SumDist(Topo(topo), false), MultiMetric(Topo(topo), false),
+      //       SingleLink(Topo(topo), false)
+      //     ))
+      //   }
+        
+      //   algorithms.filter {
+      //     val done = try {
+      //       File("dist/${id(n, topoIdx, q, k, p, d, nsd, it.name)}.txt").readLines().drop(2).any { it.startsWith("--") }
+      //     } catch (e: Exception) {
+      //       false
+      //     }
+      //     if (done)
+      //       println("skip ${id(n, topoIdx, q, k, p, d, nsd, it.name)}")
+      //     !done
+      //   }
+      // }
+
       val algorithms = synchronized(topo) {
         topo.q = q
         topo.k = k
         topo.alpha = alpha
-        
-        val algorithms = mutableListOf(
-          OnlineAlgorithm(Topo(topo)),
-          OnlineAlgorithm(Topo(topo), false),
-          CreationRate(Topo(topo)),
-          SingleLink(Topo(topo)),
-          GreedyGeographicRouting(Topo(topo)),
-          GreedyHopRouting(Topo(topo)),
-          FidelityGuaranteedRouting(Topo(topo))
+
+        val FTH = 0.7
+
+        val algorithms = mutableListOf<Algorithm>(
+          // Q-CAST with recovery paths, evaluated at F_th = 0.7
+          OnlineAlgorithm(Topo(topo), allowRecoveryPaths = true).apply {
+            setDefaultThreshold(FTH)
+          },
+          // Your fidelity-guaranteed online algorithm (internal F_TH = 0.7)
+          FidelityGuaranteedOnlineAlgorithm(Topo(topo), allowRecoveryPaths = true)
         )
-        
-        if (n == nList.first() && q == qList.first() && p == pList.first() && d == dList.first() && k == kList.first()) {
-          algorithms.addAll(listOf(
-            BotCap(Topo(topo)),
-            SumDist(Topo(topo)), MultiMetric(Topo(topo)),
-            
-            BotCap(Topo(topo), false), CreationRate(Topo(topo), false),
-            SumDist(Topo(topo), false), MultiMetric(Topo(topo), false),
-            SingleLink(Topo(topo), false)
-          ))
-        }
-        
-        algorithms.filter {
+
+        algorithms.filter { solver ->
           val done = try {
-            File("dist/${id(n, topoIdx, q, k, p, d, nsd, it.name)}.txt").readLines().drop(2).any { it.startsWith("--") }
+            File("dist/${id(n, topoIdx, q, k, p, d, nsd, solver.name)}.txt")
+              .readLines()
+              .drop(2)
+              .any { line -> line.startsWith("--") }
           } catch (e: Exception) {
             false
           }
-          if (done)
-            println("skip ${id(n, topoIdx, q, k, p, d, nsd, it.name)}")
+          if (done) {
+            println("skip ${id(n, topoIdx, q, k, p, d, nsd, solver.name)}")
+          }
           !done
         }
       }
@@ -143,11 +175,14 @@ fun simpleTest() {
   p.zip(alphas).forEach { (p, a) ->
     val topo = Topo(netTopology.toString().lines().mapIndexed { i, line -> if (i == 1) a.toString() else line }.joinToString("\n"))
     println(topo.getStatistics())
+
+    val FTH = 0.7
     
     val algorithms = listOf(
-      // OnlineAlgorithm(Topo(topo)),
-      // FidelityGuaranteedRouting(Topo(topo)),
-      FidelityGuaranteedOnlineAlgorithm(topo)
+      OnlineAlgorithm(Topo(topo), allowRecoveryPaths = true).apply {
+          setDefaultThreshold(FTH)
+      },
+      FidelityGuaranteedOnlineAlgorithm(Topo(topo), allowRecoveryPaths = true)
 //      , OnlineAlgorithmWithRecoveryPaths(Topo(topo))
 //      , BotCap(Topo(topo)),  CreationRate(Topo(topo)),
 //      SumDist(Topo(topo)),
@@ -269,13 +304,13 @@ class Main {
         else throw Exception("No GUI available, and user refuses to continue. ")
       }
       
-      simpleTest()
-      // try {
-      //   val l = args.map { it.toInt() }
-      //   if (l.isNotEmpty()) nList = l
-      // } catch (e: Exception) {
-      // }
-      // sim()
+      // simpleTest()
+      try {
+        val l = args.map { it.toInt() }
+        if (l.isNotEmpty()) nList = l
+      } catch (e: Exception) {
+      }
+      sim()
     }
   }
 }

@@ -13,9 +13,8 @@ object Fidelity {
     // One depolarizing pass at creation:
     // F(0) = 1/4 + (3/4) * exp(-1 / tau)
     fun freshLinkFidelity(tau: Double): Double {
-        val t = 7.0
         val base = 0.25
-        return (base + (1.0 - base) * Math.exp(-1.0 / t)).coerceIn(0.25, 1.0)
+        return (base + (1.0 - base) * kotlin.math.exp(-1.0 / tau)).coerceIn(base, 1.0)
     }
 
     // Keep for reference/tests only; you’re not using time decay > 0.

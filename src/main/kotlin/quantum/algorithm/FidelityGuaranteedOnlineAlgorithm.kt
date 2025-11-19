@@ -13,13 +13,13 @@ class FidelityGuaranteedOnlineAlgorithm(
 ) : OnlineAlgorithm(topo, allowRecoveryPaths) {
 
     // label for logs / plot legends
-    override val name: String = "TEMP-NAME-QCAST"
+    override val name: String = "FG"
 
     private val ENABLE_PURIFICATION = true
     private val PUR_DETERMINISTIC = false
     private val C_PUR = 1  // cost unit per attempt
 
-    private val F_TH = 0.8 // hardcoded for now
+    private val F_TH = 0.7 // hardcoded for now
     
     private val reqFth: MutableMap<Pair<Int,Int>, Double> = mutableMapOf()
 
@@ -44,47 +44,63 @@ class FidelityGuaranteedOnlineAlgorithm(
     private fun computeExgForPath(
         path: List<Node>,
         width: Int,
-        fth: Double
+        fth: Double,
+        overrideTargets: Map<Pair<Node, Node>, Double>? = null,
+        defaultPerHopTarget: Double? = null
     ): PathExgResult {
-        if (path.size < 2) {
-            return PathExgResult(path, 0.0, 0.0, false, Int.MAX_VALUE)
+        if (path.size < 2 || width <= 0) {
+            return PathExgResult(
+                path = path,
+                perHopTarget = 0.0,
+                exg = 0.0,
+                feasible = false,
+                totalPurCostExg = 0
+            )
         }
 
         val hops = path.size - 1
+        val perHopTargetDefault = defaultPerHopTarget ?: Fidelity.perHopTargetF(fth, hops)
 
-        // Equal-split per-hop target for EXG evaluation
-        val perHopTarget = Fidelity.perHopTargetF(fth, hops)
-
-        val hopInfo = topo.perHopFreshF(path)  // (edge, tau, F0)
-        val perHopBudget = (width - 1).coerceAtLeast(0)
-
-        var totalPurCostExg = 0        // ✅ Int, not 0.0
-
+        val hopInfo = topo.perHopFreshF(path) // List<Triple<Edge, Double, Double>>
+        var totalPurCostExg = 0
         var exgFeasible = true
 
-        for ((_, _, F0) in hopInfo) {
-            // minCostToReach is Int in the original Q-CAST code
-            val rawCost: Int = PurificationCostTable.minCostToReach(F0, perHopTarget)
+        val perHopBudget = (width - 1).coerceAtLeast(0)
 
-            val hopFeasible = rawCost != Int.MAX_VALUE && rawCost <= perHopBudget
-            if (!hopFeasible) {
+        for ((edge, _, F0) in hopInfo) {
+            val u = edge.n1
+            val v = edge.n2
+            val key = if (u.id <= v.id) Pair(u, v) else Pair(v, u)
+
+            val targetF = overrideTargets?.get(key) ?: perHopTargetDefault
+
+            val rawCost = PurificationCostTable.minCostToReach(F0, targetF)
+
+            if (rawCost == Int.MAX_VALUE || rawCost > perHopBudget) {
                 exgFeasible = false
             } else {
-                totalPurCostExg += rawCost   // ✅ Int + Int
+                totalPurCostExg += rawCost
             }
         }
 
-        val qPath = Math.pow(topo.q, (path.size - 2).coerceAtLeast(0).toDouble())
+        val numSwaps = (path.size - 2).coerceAtLeast(0)
+        val qPath = Math.pow(topo.q, numSwaps.toDouble())
+
         val exg = if (exgFeasible) {
             val num = width.toDouble() * qPath
-            val denom = 1.0 + totalPurCostExg.toDouble()   // ✅ convert to Double only here
+            val denom = 1.0 + totalPurCostExg.toDouble()
             if (denom > 0.0) num / denom else 0.0
         } else {
             0.0
         }
 
-        return PathExgResult(path, perHopTarget, exg, exgFeasible, totalPurCostExg)
-        //                                                       ✅ Int here now
+        return PathExgResult(
+            path = path,
+            perHopTarget = perHopTargetDefault,
+            exg = exg,
+            feasible = exgFeasible,
+            totalPurCostExg = totalPurCostExg
+        )
     }
 
     override fun P4() {
@@ -110,10 +126,10 @@ class FidelityGuaranteedOnlineAlgorithm(
                     "(${edge.n1.id},${edge.n2.id})->${"%.3f".format(F0)}"
                 }
 
-            logWriter.appendln(
-                "PRED ${majorPath.map { node -> node.id }} " +
-                    "hops=$hops predF=$predF targetHopF=$perHopTargetMajor weak=$weakStr"
-            )
+            // logWriter.appendln(
+            //     "PRED ${majorPath.map { node -> node.id }} " +
+            //         "hops=$hops predF=$predF targetHopF=$perHopTargetMajor weak=$weakStr"
+            // )
 
             // For total successes across all width units
             val oldNumOfPairs = topo
@@ -299,8 +315,41 @@ class FidelityGuaranteedOnlineAlgorithm(
                 val effectiveWidthRepaired = minOf(width, widthRepairedPhase4)
 
                 // EXG-based choice between majorPath and repaired path
-                val exgMajor = computeExgForPath(majorPath, effectiveWidthMajor, FTH)
-                val exgRepaired = computeExgForPath(p, effectiveWidthRepaired, FTH)
+                val exgMajor = computeExgForPath(
+                    majorPath,
+                    effectiveWidthMajor,
+                    FTH,
+                    overrideTargets = null,
+                    defaultPerHopTarget = perHopTargetMajor
+                )
+                // Build per-edge targets for the repaired path
+                val perEdgeTargets = mutableMapOf<Pair<Node, Node>, Double>()
+
+                // 1) Detour edges: use fDetourHop for each chosen recovery path
+                for (rp in realPickedRps) {
+                    val fDetourHop = detourPerHopTarget[rp] ?: perHopTargetMajor
+                    rp.zipWithNext { u, v ->
+                        val key = if (u.id <= v.id) Pair(u, v) else Pair(v, u)
+                        perEdgeTargets[key] = fDetourHop
+                    }
+                }
+
+
+                // 2) Remaining hops on the major path: use perHopTargetMajor
+                majorPath.zipWithNext { u, v ->
+                    val key = if (u.id <= v.id) Pair(u, v) else Pair(v, u)
+                    if (key !in perEdgeTargets) {
+                        perEdgeTargets[key] = perHopTargetMajor
+                    }
+                }
+
+                val exgRepaired = computeExgForPath(
+                    p,
+                    effectiveWidthRepaired,
+                    FTH,
+                    overrideTargets = perEdgeTargets,
+                    defaultPerHopTarget = perHopTargetMajor
+                )
 
                 val feasibleCandidates = listOf(exgMajor, exgRepaired).filter { res -> res.feasible }
 
@@ -319,12 +368,12 @@ class FidelityGuaranteedOnlineAlgorithm(
 
                 if (best == null) {
                     // No EXG-feasible span for this width unit → skip swaps entirely
-                    logWriter.appendln(
-                        " EXG-SKIP ${majorPath.map { node -> node.id }} widthUnit=$i " +
-                            "reason=no_feasible_span " +
-                            "EXGmajor=${exgMajor.exg.format(4)} " +
-                            "EXGrepaired=${exgRepaired.exg.format(4)}"
-                    )
+                    // logWriter.appendln(
+                    //     " EXG-SKIP ${majorPath.map { node -> node.id }} widthUnit=$i " +
+                    //         "reason=no_feasible_span " +
+                    //         "EXGmajor=${exgMajor.exg.format(4)} " +
+                    //         "EXGrepaired=${exgRepaired.exg.format(4)}"
+                    // )
                     continue
                 }
 
@@ -365,12 +414,12 @@ class FidelityGuaranteedOnlineAlgorithm(
                 }
 
                 if (i == 1) {
-                    logWriter.appendln(
-                        " EXG-CHOSEN path=${chosenPath.map { node -> node.id }} widthUnit=$i " +
-                            "EXGmajor=${exgMajor.exg.format(4)} " +
-                            "EXGrepaired=${exgRepaired.exg.format(4)} " +
-                            "EXGchosen=${best.exg.format(4)}"
-                    )
+                    // logWriter.appendln(
+                    //     " EXG-CHOSEN path=${chosenPath.map { node -> node.id }} widthUnit=$i " +
+                    //         "EXGmajor=${exgMajor.exg.format(4)} " +
+                    //         "EXGrepaired=${exgRepaired.exg.format(4)} " +
+                    //         "EXGchosen=${best.exg.format(4)}"
+                    // )
                 }
 
                 // ===== Runtime purification only on the chosenPath =====
@@ -405,12 +454,12 @@ class FidelityGuaranteedOnlineAlgorithm(
                         }
                     }
 
-                    if (totalPurCostOnChosen > 0) {
-                        logWriter.appendln(
-                            " EXG-PATH ${chosenPath.map { node -> node.id }} " +
-                                "widthUnit=$i CpurRuntime=$totalPurCostOnChosen"
-                        )
-                    }
+                    // if (totalPurCostOnChosen > 0) {
+                    //     logWriter.appendln(
+                    //         " EXG-PATH ${chosenPath.map { node -> node.id }} " +
+                    //             "widthUnit=$i CpurRuntime=$totalPurCostOnChosen"
+                    //     )
+                    // }
                 }
 
                 // GATE: check if each hop can meet its *local* per-hop target with its best available pair
@@ -434,10 +483,10 @@ class FidelityGuaranteedOnlineAlgorithm(
                 }
 
                 if (!allHopsMeetTarget) {
-                    logWriter.appendln(
-                        " EXG-GATE-BLOCK path=${chosenPath.map { it.id }} " +
-                            "reason=hop_below_target"
-                    )
+                    // logWriter.appendln(
+                    //     " EXG-GATE-BLOCK path=${chosenPath.map { it.id }} " +
+                    //         "reason=hop_below_target"
+                    // )
                     continue  // skip swaps for this width unit
                 }
 
@@ -504,8 +553,17 @@ class FidelityGuaranteedOnlineAlgorithm(
 
             val qualifiedSucc = if (succ > 0 && estF + 1e-12 >= FTH) succ else 0
 
+            // logWriter.appendln(
+            //     """ ${majorPath.map { node -> node.id }}, $width $succ $estF $qualifiedSucc"""
+            // )
+
+            val avgF = estF
+            val succAboveFth = qualifiedSucc
+
+            val pathIds = majorPath.map { it.id }
             logWriter.appendln(
-                """ ${majorPath.map { node -> node.id }}, $width $succ $estF $qualifiedSucc"""
+                " [${pathIds.joinToString(", ")}], $width $succ " +
+                "// avgF=${avgF.format(4)} succAboveFth=$succAboveFth"
             )
 
             // pathToRecoveryPaths[pathWithWidth].forEach { rpData ->

@@ -39,12 +39,14 @@ class Plot {
     )
   }
   
-  val nameMapping = mapOf("SL" to "SLMP", "Online" to "Q-CAST", "Online-R" to "Q-CAST\\\\R", "CR" to "Q-PASS", "CR-R" to "Q-PASS\\\\R", "Greedy_H" to "Greedy")
-  val names = listOf("Online", "SL", "Greedy_H", "CR")
+  val nameMapping = mapOf("SL" to "SLMP", "Online" to "Q-CAST", "Online-R" to "Q-CAST\\\\R", "CR" to "Q-PASS", "CR-R" to "Q-PASS\\\\R", "Greedy_H" to "Greedy", "FG" to "FG-Online")
+  // val names = listOf("Online", "SL", "Greedy_H", "CR")
+  val names = listOf("Online", "FG")
   
   fun throughputCdf() {
     val nameMapping = mapOf("SL" to "SLMP", "Online" to "Q-CAST", "Greedy_H" to "Greedy")
-    val names = listOf("Online", "SL", "Greedy_H", "CR", "BotCap", "SumDist", "MultiMetric")
+    // val names = listOf("Online", "SL", "Greedy_H", "CR", "BotCap", "SumDist", "MultiMetric")
+    val names = listOf("Online", "FG")
     
     (1..3).forEach { mode ->
       var (d, n, p, q, k, nsd) = referenceSetting
@@ -963,13 +965,13 @@ class Plot {
       p.throughputP()
       p.throughputQ()
       
-      p.efficiency()
-      p.fairness()
-      p.recovery1()
+      // p.efficiency()
+      // p.fairness()
+      // p.recovery1()
       
-      p.rp2Cdf_nsd()
-      p.rp2Cdf_n()
-      p.rp2N()
+      // p.rp2Cdf_nsd()
+      // p.rp2Cdf_n()
+      // p.rp2N()
       p.rp2Nsd()
       
       p.plot()

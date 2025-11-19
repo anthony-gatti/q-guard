@@ -305,14 +305,16 @@ ${links.groupBy { it.n1 to it.n2 }.map { "${it.key.n1.id} ${it.key.n2.id} ${it.v
   }
 
   // For a given physical path, report (edge, tau, F0, w) per hop
-  fun perHopFreshF(path: Path): List<Triple<Edge, Double, Double>> {
-    if (path.size < 2) return emptyList()
-    return path.edges().map { e ->
-        val d   = +(e.n1.loc - e.n2.loc)
-        val tau = (Link.TAU_MIN + Link.TAU_SLOPE * d).coerceAtLeast(1e-6)
-        val F0  = Fidelity.freshLinkFidelity(tau)
-        Triple(e, tau, F0)
-    }
+  fun perHopFreshF(path: List<Node>): List<Triple<Edge, Double, Double>> {
+      val res = mutableListOf<Triple<Edge, Double, Double>>()
+      path.edges().forEach { e ->
+          // Use the actual physical link's tau instead of recomputing.
+          val repLink = linksBetween(e.n1, e.n2).first()
+          val tau = repLink.tau
+          val F0  = Fidelity.freshLinkFidelity(tau)
+          res.add(Triple(e, tau, F0))
+      }
+      return res
   }
   
   fun widthPhase2(path: Path) = listOf(path[0].remainingQubits, path.last().remainingQubits,

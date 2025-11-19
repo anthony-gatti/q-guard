@@ -10,6 +10,12 @@ import kotlin.collections.HashMap
 
 open class OnlineAlgorithm(topo: Topo, val allowRecoveryPaths: Boolean = true) : Algorithm(topo) {
   override val name: String = "Online" + if (allowRecoveryPaths) "" else "-R"
+
+  protected var defaultFth: Double = 0.7
+
+  fun setDefaultThreshold(fth: Double) {
+    defaultFth = fth
+  }
   
   override fun prepare() {
   }
@@ -279,7 +285,18 @@ open class OnlineAlgorithm(topo: Topo, val allowRecoveryPaths: Boolean = true) :
           }
         }
       }
-      logWriter.appendln(""" ${majorPath.map { it.id }}, $width $succ""")
+
+      val FTH = defaultFth
+      val estF = if (succ > 0 && majorPath.size > 1) {
+        // Approximate: treat entanglement as if it traveled along the major path
+        topo.pathEndToEndFidelity(majorPath)
+      } else {
+        0.0
+      }
+
+      val qualifiedSucc = if (succ > 0 && estF + 1e-12 >= FTH) succ else 0
+
+      logWriter.appendln(""" ${majorPath.map { it.id }}, $width $succ $estF $qualifiedSucc""")
       pathToRecoveryPaths[pathWithWidth].forEach {
         logWriter.appendln("""  ${it.path.map { it.id }}, $width ${it.available} ${it.taken}""")
       }

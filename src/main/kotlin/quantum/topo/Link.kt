@@ -10,9 +10,9 @@ import kotlin.math.pow
 class Link(val topo: Topo, val n1: Node, val n2: Node, val l: Double, var entangled: Boolean = false, var s1: Boolean = false, var s2: Boolean = false, val id: Int = cnt++) {
   companion object {
     var cnt = 0
-    const val TAU_MAX: Double = 7.0
+    const val TAU_MAX: Double = 10.0
     const val TAU_SLOPE: Double = 0.05
-    const val TAU_MIN: Double = 1.0
+    const val TAU_MIN: Double = 4.0
   }
 
 

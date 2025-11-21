@@ -295,8 +295,8 @@ ${links.groupBy { it.n1 to it.n2 }.map { "${it.key.n1.id} ${it.key.n2.id} ${it.v
     if (path.size < 2) return 0.0
     var wProd = 1.0
     path.edges().forEach { e ->
-        val d = +(e.n1.loc - e.n2.loc)                       // km
-        val tau = (Link.TAU_MIN + Link.TAU_SLOPE * d).coerceAtLeast(1e-6)
+        val repLink = linksBetween(e.n1, e.n2).first()
+        val tau = repLink.tau
         val F0  = Fidelity.freshLinkFidelity(tau)
         val w   = Fidelity.wFromF(F0).coerceIn(-1.0/3.0, 1.0)
         wProd *= w

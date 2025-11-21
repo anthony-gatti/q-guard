@@ -304,13 +304,13 @@ class Main {
         else throw Exception("No GUI available, and user refuses to continue. ")
       }
       
-      // simpleTest()
-      try {
-        val l = args.map { it.toInt() }
-        if (l.isNotEmpty()) nList = l
-      } catch (e: Exception) {
-      }
-      sim()
+      simpleTest()
+      // try {
+      //   val l = args.map { it.toInt() }
+      //   if (l.isNotEmpty()) nList = l
+      // } catch (e: Exception) {
+      // }
+      // sim()
     }
   }
 }

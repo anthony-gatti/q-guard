@@ -65,8 +65,6 @@ class FidelityGuaranteedOnlineAlgorithm(
         var totalPurCostExg = 0
         var exgFeasible = true
 
-        val perHopBudget = (width - 1).coerceAtLeast(0)
-
         for ((edge, _, F0) in hopInfo) {
             val u = edge.n1
             val v = edge.n2
@@ -74,13 +72,32 @@ class FidelityGuaranteedOnlineAlgorithm(
 
             val targetF = overrideTargets?.get(key) ?: perHopTargetDefault
 
+            // r = number of BBPSSW "levels" needed to reach targetF from F0
             val rawCost = PurificationCostTable.minCostToReach(F0, targetF)
 
-            if (rawCost == Int.MAX_VALUE || rawCost > perHopBudget) {
+            // If the table says "impossible", the segment is infeasible
+            if (rawCost == Int.MAX_VALUE) {
                 exgFeasible = false
-            } else {
-                totalPurCostExg += rawCost
+                break
             }
+
+            // Deterministic tree: need ~2^r base pairs on this hop for one purified output
+            // Clamp to avoid silly shifts if something goes wrong in the table
+            val requiredPairs = if (rawCost >= 30) Int.MAX_VALUE else (1 shl rawCost)
+
+            // How many usable entangled pairs do we actually have on this hop right now?
+            val availablePairs = topo.linksBetween(u, v)
+                .count { link ->
+                    link.entangled && link.notSwapped() && !link.utilized
+                }
+
+            if (availablePairs < requiredPairs) {
+                // Not enough raw pairs on this hop to realize the planned purification depth
+                exgFeasible = false
+                break
+            }
+
+            totalPurCostExg += rawCost
         }
 
         val numSwaps = (path.size - 2).coerceAtLeast(0)
@@ -126,10 +143,10 @@ class FidelityGuaranteedOnlineAlgorithm(
                     "(${edge.n1.id},${edge.n2.id})->${"%.3f".format(F0)}"
                 }
 
-            // logWriter.appendln(
-            //     "PRED ${majorPath.map { node -> node.id }} " +
-            //         "hops=$hops predF=$predF targetHopF=$perHopTargetMajor weak=$weakStr"
-            // )
+            logWriter.appendln(
+                "PRED ${majorPath.map { node -> node.id }} " +
+                    "hops=$hops predF=$predF targetHopF=$perHopTargetMajor weak=$weakStr"
+            )
 
             // For total successes across all width units
             val oldNumOfPairs = topo
@@ -172,6 +189,16 @@ class FidelityGuaranteedOnlineAlgorithm(
                 val fDetourHop = Fidelity.fFromW(wDetourHop)
 
                 detourPerHopTarget[rp] = fDetourHop
+            }
+
+            // For each recovery path, remember which major-path segment [s1, s2] it replaces
+            val rpToSegmentRange: MutableMap<Path, Pair<Int, Int>> = mutableMapOf()
+            recoveryPaths.forEach { (_, _, rp) ->
+                val s1 = majorPath.indexOf(rp.first())
+                val s2 = majorPath.indexOf(rp.last())
+                if (s1 >= 0 && s2 > s1) {
+                    rpToSegmentRange[rp] = s1 to s2
+                }
             }
 
             val edges = (0..majorPath.size - 2).zip(1..majorPath.size - 1)
@@ -230,6 +257,53 @@ class FidelityGuaranteedOnlineAlgorithm(
 
                         if (majorPath.indexOf(rp.first()) < nextIndex) continue
                         nextIndex = majorPath.indexOf(rp.last())
+
+                        // --- NEW: segment-local EXG decision: major segment vs this recovery path ---
+
+                        val range = rpToSegmentRange[rp] ?: continue@tryRp
+                        val (s1, s2) = range
+
+                        // Major segment nodes from s1..s2 along the major path
+                        val majorSeg: List<Node> = majorPath.subList(s1, s2 + 1)
+
+                        // Effective width for the segment: min reserved width and actual width on that segment
+                        val widthMajorSegPhase4 = topo.widthPhase4(majorSeg)
+                        val widthDetourSegPhase4 = topo.widthPhase4(rp)
+
+                        // Cap by original “nominal” width so we don’t exceed reservation
+                        val effectiveWidthMajorSeg = minOf(width, widthMajorSegPhase4)
+                        val effectiveWidthDetourSeg = minOf(width, widthDetourSegPhase4)
+
+                        // Compute EXG for the major segment using the global per-hop target
+                        val exgMajorSeg = computeExgForPath(
+                            majorSeg,
+                            effectiveWidthMajorSeg,
+                            FTH,
+                            overrideTargets = null,
+                            defaultPerHopTarget = perHopTargetMajor
+                        )
+
+                        // Compute EXG for the detour segment using its segment-specific per-hop target
+                        val perEdgeTargetsSeg = mutableMapOf<Pair<Node, Node>, Double>()
+                        val fDetourHop = detourPerHopTarget[rp] ?: perHopTargetMajor
+
+                        rp.dropLast(1).zip(rp.drop(1)).forEach { (u, v) ->
+                            val key = if (u.id <= v.id) Pair(u, v) else Pair(v, u)
+                            perEdgeTargetsSeg[key] = fDetourHop
+                        }
+
+                        val exgDetourSeg = computeExgForPath(
+                            rp,
+                            effectiveWidthDetourSeg,
+                            FTH,
+                            overrideTargets = perEdgeTargetsSeg,
+                            defaultPerHopTarget = perHopTargetMajor
+                        )
+
+                        // Only consider this recovery path if it is EXG-feasible and better than the major segment
+                        if (!exgDetourSeg.feasible || exgDetourSeg.exg <= exgMajorSeg.exg) {
+                            continue@tryRp
+                        }
 
                         val pickedRps = realPickedRps.toHashSet()
                         val repairedEdges = realRepairedEdges.toHashSet()
@@ -306,121 +380,59 @@ class FidelityGuaranteedOnlineAlgorithm(
                 //     )
                 // }
 
-                // Actual available width in Phase 4 based on successful entanglement
-                val widthMajorPhase4 = topo.widthPhase4(majorPath)
-                val widthRepairedPhase4 = topo.widthPhase4(p)
+                // At this point, realPickedRps contains only those recovery paths that:
+                // - are feasible under the local EXG comparison, and
+                // - were selected by the Q-CAST coverage logic for this width unit.
 
-                // cap by original “nominal” width so path reservation isnt exceeded
-                val effectiveWidthMajor = minOf(width, widthMajorPhase4)
-                val effectiveWidthRepaired = minOf(width, widthRepairedPhase4)
-
-                // EXG-based choice between majorPath and repaired path
-                val exgMajor = computeExgForPath(
-                    majorPath,
-                    effectiveWidthMajor,
-                    FTH,
-                    overrideTargets = null,
-                    defaultPerHopTarget = perHopTargetMajor
-                )
-                // Build per-edge targets for the repaired path
-                val perEdgeTargets = mutableMapOf<Pair<Node, Node>, Double>()
-
-                // 1) Detour edges: use fDetourHop for each chosen recovery path
-                for (rp in realPickedRps) {
-                    val fDetourHop = detourPerHopTarget[rp] ?: perHopTargetMajor
-                    rp.zipWithNext { u, v ->
-                        val key = if (u.id <= v.id) Pair(u, v) else Pair(v, u)
-                        perEdgeTargets[key] = fDetourHop
-                    }
-                }
-
-
-                // 2) Remaining hops on the major path: use perHopTargetMajor
-                majorPath.zipWithNext { u, v ->
-                    val key = if (u.id <= v.id) Pair(u, v) else Pair(v, u)
-                    if (key !in perEdgeTargets) {
-                        perEdgeTargets[key] = perHopTargetMajor
-                    }
-                }
-
-                val exgRepaired = computeExgForPath(
-                    p,
-                    effectiveWidthRepaired,
-                    FTH,
-                    overrideTargets = perEdgeTargets,
-                    defaultPerHopTarget = perHopTargetMajor
-                )
-
-                val feasibleCandidates = listOf(exgMajor, exgRepaired).filter { res -> res.feasible }
-
-                val best: PathExgResult? = if (feasibleCandidates.isEmpty()) {
-                    null
-                } else {
-                    var bestLocal = feasibleCandidates[0]
-                    for (j in 1 until feasibleCandidates.size) {
-                        val cand = feasibleCandidates[j]
-                        if (cand.exg > bestLocal.exg) {
-                            bestLocal = cand
-                        }
-                    }
-                    bestLocal
-                }
-
-                if (best == null) {
-                    // No EXG-feasible span for this width unit → skip swaps entirely
-                    // logWriter.appendln(
-                    //     " EXG-SKIP ${majorPath.map { node -> node.id }} widthUnit=$i " +
-                    //         "reason=no_feasible_span " +
-                    //         "EXGmajor=${exgMajor.exg.format(4)} " +
-                    //         "EXGrepaired=${exgRepaired.exg.format(4)}"
-                    // )
+                if (realPickedRps.isEmpty() && brokenEdges.isNotEmpty()) {
+                    // Nothing could be repaired for this width unit; skip it
                     continue
                 }
 
-                // Path actually used for this width unit
-                val chosenPath = best.path
+                // Build the final path for this width unit by splicing the chosen detours into the major path
+                val chosenPath: List<Node> = realPickedRps.fold(majorPath) { acc, rp ->
+                    val toAdd = rp.edges()
+                    val toDelete = acc
+                        .dropWhile { node -> node != rp.first() }
+                        .dropLastWhile { node -> node != rp.last() }
+                        .edges()
+
+                    val edgesOfNewPathAndCycles = acc.edges().toSet() - toDelete + toAdd
+
+                    val (_, newPath) = topo.shortestPath(
+                        edgesOfNewPathAndCycles,
+                        acc.first(),
+                        acc.last(),
+                        ReducibleLazyEvaluation({ 1.0 })
+                    )
+
+                    newPath
+                }
+
                 lastSuccessfulPathForLog = chosenPath
 
-                // === Build per-edge target fidelity for this chosen path ===
+                // Build per-edge target fidelity for this chosen path:
+                // - detour edges get their segment-specific detour target,
+                // - all remaining major-path edges get perHopTargetMajor.
+
                 val chosenPerEdgeTarget: MutableMap<Pair<Node, Node>, Double> = mutableMapOf()
 
-                if (chosenPath == majorPath) {
-                    // Pure major path: every hop gets the major per-hop target
-                    chosenPath
-                        .dropLast(1).zip(chosenPath.drop(1))
-                        .forEach { (u, v) ->
-                            chosenPerEdgeTarget[Pair(u, v)] = perHopTargetMajor
-                        }
-                } else {
-                    // Repaired path: some hops are on detours, some are on major segments.
-
-                    // 1) Fill detour hops with their segment-specific target
-                    for (rp in realPickedRps) {
-                        val fDetourHop = detourPerHopTarget[rp] ?: perHopTargetMajor
-
-                        rp.edges().forEach { edge ->
-                            val u = edge.n1
-                            val v = edge.n2
-                            chosenPerEdgeTarget[Pair(u, v)] = fDetourHop
-                        }
+                // 1) Detour hops: use detourPerHopTarget[rp]
+                for (rp in realPickedRps) {
+                    val fDetourHop = detourPerHopTarget[rp] ?: perHopTargetMajor
+                    rp.dropLast(1).zip(rp.drop(1)).forEach { (u, v) ->
+                        val key = if (u.id <= v.id) Pair(u, v) else Pair(v, u)
+                        chosenPerEdgeTarget[key] = fDetourHop
                     }
-
-                    // 2) Any remaining hops on chosenPath (not part of an rp) get the major target
-                    chosenPath
-                        .dropLast(1).zip(chosenPath.drop(1))
-                        .forEach { (u, v) ->
-                            chosenPerEdgeTarget.putIfAbsent(Pair(u, v), perHopTargetMajor)
-                        }
                 }
 
-                if (i == 1) {
-                    // logWriter.appendln(
-                    //     " EXG-CHOSEN path=${chosenPath.map { node -> node.id }} widthUnit=$i " +
-                    //         "EXGmajor=${exgMajor.exg.format(4)} " +
-                    //         "EXGrepaired=${exgRepaired.exg.format(4)} " +
-                    //         "EXGchosen=${best.exg.format(4)}"
-                    // )
-                }
+                // 2) Remaining major-path hops: fill in perHopTargetMajor if not already set
+                chosenPath
+                    .dropLast(1).zip(chosenPath.drop(1))
+                    .forEach { (u, v) ->
+                        val key = if (u.id <= v.id) Pair(u, v) else Pair(v, u)
+                        chosenPerEdgeTarget.putIfAbsent(key, perHopTargetMajor)
+                    }
 
                 // ===== Runtime purification only on the chosenPath =====
                 var totalPurCostOnChosen = 0
@@ -430,7 +442,8 @@ class FidelityGuaranteedOnlineAlgorithm(
 
                     for ((u, v) in hopsOnChosen) {
                         // Local target for this specific hop (u,v)
-                        val targetF = chosenPerEdgeTarget[Pair(u, v)] ?: perHopTargetMajor
+                        val key = if (u.id <= v.id) Pair(u, v) else Pair(v, u)
+                        val targetF = chosenPerEdgeTarget[key] ?: perHopTargetMajor
 
                         while (true) {
                             val pool = topo.linksBetween(u, v)
@@ -454,12 +467,12 @@ class FidelityGuaranteedOnlineAlgorithm(
                         }
                     }
 
-                    // if (totalPurCostOnChosen > 0) {
-                    //     logWriter.appendln(
-                    //         " EXG-PATH ${chosenPath.map { node -> node.id }} " +
-                    //             "widthUnit=$i CpurRuntime=$totalPurCostOnChosen"
-                    //     )
-                    // }
+                    if (totalPurCostOnChosen > 0) {
+                        logWriter.appendln(
+                            " EXG-PATH ${chosenPath.map { node -> node.id }} " +
+                                "widthUnit=$i CpurRuntime=$totalPurCostOnChosen"
+                        )
+                    }
                 }
 
                 // GATE: check if each hop can meet its *local* per-hop target with its best available pair
@@ -468,7 +481,8 @@ class FidelityGuaranteedOnlineAlgorithm(
                 val hopsOnChosen = chosenPath.dropLast(1).zip(chosenPath.drop(1))
 
                 for ((u, v) in hopsOnChosen) {
-                    val targetF = chosenPerEdgeTarget[Pair(u, v)] ?: perHopTargetMajor
+                    val key = if (u.id <= v.id) Pair(u, v) else Pair(v, u)
+                    val targetF = chosenPerEdgeTarget[key] ?: perHopTargetMajor
 
                     val pool = topo.linksBetween(u, v)
                         .filter { it.entangled && it.notSwapped() && !it.utilized }
@@ -553,9 +567,9 @@ class FidelityGuaranteedOnlineAlgorithm(
 
             val qualifiedSucc = if (succ > 0 && estF + 1e-12 >= FTH) succ else 0
 
-            // logWriter.appendln(
-            //     """ ${majorPath.map { node -> node.id }}, $width $succ $estF $qualifiedSucc"""
-            // )
+            logWriter.appendln(
+                """ ${majorPath.map { node -> node.id }}, $width $succ $estF $qualifiedSucc"""
+            )
 
             val avgF = estF
             val succAboveFth = qualifiedSucc
@@ -566,12 +580,12 @@ class FidelityGuaranteedOnlineAlgorithm(
                 "// avgF=${avgF.format(4)} succAboveFth=$succAboveFth"
             )
 
-            // pathToRecoveryPaths[pathWithWidth].forEach { rpData ->
-            //     val ids = rpData.path.map { node -> node.id }
-            //     logWriter.appendln(
-            //         """  $ids, $width ${rpData.available} ${rpData.taken}"""
-            //     )
-            // }
+            pathToRecoveryPaths[pathWithWidth].forEach { rpData ->
+                val ids = rpData.path.map { node -> node.id }
+                logWriter.appendln(
+                    """  $ids, $width ${rpData.available} ${rpData.taken}"""
+                )
+            }
 
             logWriter.appendln()
         }

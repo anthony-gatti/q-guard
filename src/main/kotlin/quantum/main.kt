@@ -87,7 +87,8 @@ fun sim() {
             setDefaultThreshold(FTH)
           },
           // Your fidelity-guaranteed online algorithm (internal F_TH = 0.7)
-          FidelityGuaranteedOnlineAlgorithm(Topo(topo), allowRecoveryPaths = true)
+          FidelityGuaranteedOnlineAlgorithm(Topo(topo), allowRecoveryPaths = true),
+          FG_Online_v2(Topo(topo), allowRecoveryPaths = true)
         )
 
         algorithms.filter { solver ->
@@ -182,7 +183,12 @@ fun simpleTest() {
       OnlineAlgorithm(Topo(topo), allowRecoveryPaths = true).apply {
           setDefaultThreshold(FTH)
       },
-      FidelityGuaranteedOnlineAlgorithm(Topo(topo), allowRecoveryPaths = true)
+      FidelityGuaranteedOnlineAlgorithm(Topo(topo), allowRecoveryPaths = true).apply {
+          setDefaultThreshold(FTH)
+      },
+      FG_Online_v2(Topo(topo), allowRecoveryPaths = true).apply {
+          setDefaultThreshold(FTH)
+      }
 //      , OnlineAlgorithmWithRecoveryPaths(Topo(topo))
 //      , BotCap(Topo(topo)),  CreationRate(Topo(topo)),
 //      SumDist(Topo(topo)),
@@ -304,13 +310,13 @@ class Main {
         else throw Exception("No GUI available, and user refuses to continue. ")
       }
       
-      simpleTest()
-      // try {
-      //   val l = args.map { it.toInt() }
-      //   if (l.isNotEmpty()) nList = l
-      // } catch (e: Exception) {
-      // }
-      // sim()
+      // simpleTest()
+      try {
+        val l = args.map { it.toInt() }
+        if (l.isNotEmpty()) nList = l
+      } catch (e: Exception) {
+      }
+      sim()
     }
   }
 }

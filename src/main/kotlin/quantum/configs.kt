@@ -54,7 +54,7 @@ val records = ReducibleLazyEvaluation<String, MutableList<Record>>({ mutableList
 enum class Type { Online, Offline }
 data class RecoveryPath2(val path: IntArray, val width: Int, val good: Int, val taken: Int)
 data class RecoveryPath1(val path: IntArray, val occupiedChannels: Int, val goodChannels: Int)
-data class MajorPath(val path: IntArray, val width: Int, val succ: Int, val type: Type, val recoveryPaths: MutableList<RecoveryPath2>)
+data class MajorPath(val path: IntArray, val width: Int, val succ: Int, val type: Type, val recoveryPaths: MutableList<RecoveryPath2>, val qualifiedSucc: Int)
 data class Record(val ops: List<Pair<Int, Int>>, val majorPaths: MutableList<MajorPath>, var rpCnt: Int, var rpChannelCnt: Int)
 
 // fun parseLog(fn: String): List<Record> {
@@ -188,14 +188,17 @@ fun parseLog(fn: String): List<Record> {
 
             // Old format: width succ
             // New format: width rawSucc estF qualifiedSucc
-            val succ = if (metricTokens.size >= 4) {
-              // interpret the *last* integer as "succ" = fidelity-qualified succ
-              metricTokens.last().toInt()
+            val (succ, qualifiedSucc) = if (metricTokens.size >= 4) {
+                val rawSucc = metricTokens[1].toInt()
+                val qSucc   = metricTokens[3].toInt()
+                rawSucc to qSucc
             } else {
-              metricTokens[1].toInt()
+                val rawSucc = metricTokens[1].toInt()
+                // For old logs with no fidelity info, you can either treat all succ as qualified…
+                rawSucc to rawSucc
             }
 
-            currMajorPath = MajorPath(pathInts.toIntArray(), width, succ, type, mutableListOf())
+            currMajorPath = MajorPath(pathInts.toIntArray(), width, succ, type, mutableListOf(), qualifiedSucc)
             if (currRecord == null ||
               currMajorPath.path.first() to currMajorPath.path.last() !in currRecord.ops
             ) {

@@ -7,13 +7,13 @@ import quantum.tryPurifyOnEdge
 import utils.ReducibleLazyEvaluation
 import utils.format
 
-class FidelityGuaranteedOnlineAlgorithm(
+class FG_Online_v2(
     topo: Topo,
     allowRecoveryPaths: Boolean = true
 ) : OnlineAlgorithm(topo, allowRecoveryPaths) {
 
     // label for logs / plot legends
-    override val name: String = "FG"
+    override val name: String = "FG-v2"
 
     private val ENABLE_PURIFICATION = true
     private val PUR_DETERMINISTIC = false
@@ -62,12 +62,14 @@ class FidelityGuaranteedOnlineAlgorithm(
         val perHopTargetDefault =
             defaultPerHopTarget ?: Fidelity.perHopTargetF(fth, hops)
 
-        val hopInfo = topo.perHopFreshF(path) // List<Triple<Edge, Double, Double>>
+        val hopInfo = topo.perHopFreshF(path)
         var totalPurCostExg = 0
         var exgFeasible = true
 
-        // Max BBPSSW "levels" we’re willing to pay for on each hop
         val perHopBudget = (width - 1).coerceAtLeast(0)
+
+        var availabilitySum = 0.0
+        var availabilityCount = 0
 
         for ((edge, _, F0) in hopInfo) {
             val u = edge.n1
@@ -77,31 +79,66 @@ class FidelityGuaranteedOnlineAlgorithm(
             val targetF = overrideTargets?.get(key) ?: perHopTargetDefault
 
             val rawCost = PurificationCostTable.minCostToReach(F0, targetF)
-
+            // Analytic feasibility (same as Option A)
             if (rawCost == Int.MAX_VALUE || rawCost > perHopBudget) {
                 exgFeasible = false
                 break
-            } else {
-                totalPurCostExg += rawCost
             }
+
+            totalPurCostExg += rawCost
+
+            // Realized availability on this hop
+            val requiredPairs =
+                if (rawCost <= 0) 1 else (1 shl rawCost).coerceAtMost(1 shl 30)
+
+            val availablePairs = topo.linksBetween(u, v)
+                .count { link ->
+                    link.entangled && link.notSwapped() && !link.utilized
+                }
+
+            val ratio =
+                if (requiredPairs > 0)
+                    (availablePairs.toDouble() / requiredPairs.toDouble())
+                        .coerceIn(0.0, 1.0)
+                else
+                    1.0
+
+            availabilitySum += ratio
+            availabilityCount += 1
+        }
+
+        if (!exgFeasible) {
+            return PathExgResult(
+                path = path,
+                perHopTarget = perHopTargetDefault,
+                exg = 0.0,
+                feasible = false,
+                totalPurCostExg = totalPurCostExg
+            )
         }
 
         val numSwaps = (path.size - 2).coerceAtLeast(0)
         val qPath = Math.pow(topo.q, numSwaps.toDouble())
 
-        val exg = if (exgFeasible) {
+        val baseExg = run {
             val num = width.toDouble() * qPath
             val denom = 1.0 + totalPurCostExg.toDouble()
             if (denom > 0.0) num / denom else 0.0
-        } else {
-            0.0
         }
+
+        val availabilityFactor =
+            if (availabilityCount > 0)
+                (availabilitySum / availabilityCount).coerceIn(0.0, 1.0)
+            else
+                1.0
+
+        val exg = baseExg * availabilityFactor
 
         return PathExgResult(
             path = path,
             perHopTarget = perHopTargetDefault,
             exg = exg,
-            feasible = exgFeasible,
+            feasible = true,
             totalPurCostExg = totalPurCostExg
         )
     }

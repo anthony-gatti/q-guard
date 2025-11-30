@@ -39,14 +39,14 @@ class Plot {
     )
   }
   
-  val nameMapping = mapOf("SL" to "SLMP", "Online" to "Q-CAST", "Online-R" to "Q-CAST\\\\R", "CR" to "Q-PASS", "CR-R" to "Q-PASS\\\\R", "Greedy_H" to "Greedy", "FG" to "FG-Online", "FG-v2" to "FG-Online-v2")
+  val nameMapping = mapOf("SL" to "SLMP", "Online" to "Q-CAST", "Online-R" to "Q-CAST\\\\R", "CR" to "Q-PASS", "CR-R" to "Q-PASS\\\\R", "Greedy_H" to "Greedy", "FG" to "FG-Online", "FG-v2" to "TEMP-NAME", "Q-CAST-PUR" to "Q-CAST-PUR")
   // val names = listOf("Online", "SL", "Greedy_H", "CR")
-  val names = listOf("Online", "FG", "FG-v2")
+  val names = listOf("Online", "FG-v2", "Q-CAST-PUR")
   
   fun throughputCdf() {
-    val nameMapping = mapOf("SL" to "SLMP", "Online" to "Q-CAST", "Greedy_H" to "Greedy", "FG" to "FG-Online", "FG-v2" to "FG-Online-v2")
+    val nameMapping = mapOf("SL" to "SLMP", "Online" to "Q-CAST", "Greedy_H" to "Greedy", "FG" to "FG-Online", "FG-v2" to "TEMP-NAME", "Q-CAST-PUR" to "Q-CAST-PUR")
     // val names = listOf("Online", "SL", "Greedy_H", "CR", "BotCap", "SumDist", "MultiMetric")
-    val names = listOf("Online", "FG", "FG-v2")
+    val names = listOf("Online", "FG-v2", "Q-CAST-PUR")
     
     (1..3).forEach { mode ->
       var (d, n, p, q, k, nsd) = referenceSetting
@@ -232,6 +232,35 @@ class Plot {
         rlist.map { it.majorPaths.filter { it.succ > 0 }.distinctBy { it.path.first() to it.path.last() }.size.toDouble() }.average()
       }
     }
+    val resultsQ = names.map { name ->
+      dList.sorted().map { d ->
+        val rlist = topoRange.flatMap { topoIdx ->
+          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name) + ".txt")
+        }
+        
+        rlist.map { it.majorPaths.sumByDouble { it.qualifiedSucc.toDouble() } }.average()
+      }
+    }
+    
+    val results2Q = names.map { name ->
+      dList.sorted().map { d ->
+        val rlist = topoRange.flatMap { topoIdx ->
+          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name) + ".txt")
+        }
+        
+        rlist.map { it.majorPaths.count { it.qualifiedSucc > 0 }.toDouble() }.average()
+      }
+    }
+    
+    val results3Q = names.map { name ->
+      dList.sorted().map { d ->
+        val rlist = topoRange.flatMap { topoIdx ->
+          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name) + ".txt")
+        }
+        
+        rlist.map { it.majorPaths.filter { it.qualifiedSucc > 0 }.distinctBy { it.path.first() to it.path.last() }.size.toDouble() }.average()
+      }
+    }
     
     children += listOf(
       """
@@ -258,6 +287,30 @@ class Plot {
           "solutionList": ${names.map { """ "${nameMapping[it] ?: it}" """ }},
           "yTitle": "# succ S-D pairs",
           "y": ${results3}
+        }""".trimIndent(),"""
+        {
+          "name": "${"qualified-throughput-d-$n-$p-$q-$k-$nsd".replace(".", "")}",
+          "xTitle": "Average node degree",
+          "x": ${dList.sorted()},
+          "solutionList": ${names.map { """ "${nameMapping[it] ?: it}" """ }},
+          "yTitle": "Throughput (eps)",
+          "y": ${resultsQ}
+        }""".trimIndent(), """
+        {
+          "name": "${"qualified-succ-paths-d-$n-$p-$q-$k-$nsd".replace(".", "")}",
+          "xTitle": "Average node degree",
+          "x": ${dList.sorted()},
+          "solutionList": ${names.map { """ "${nameMapping[it] ?: it}" """ }},
+          "yTitle": "# succ main paths",
+          "y": ${results2Q}
+        }""".trimIndent(), """
+        {
+          "name": "${"qualified-succ-pairs-d-$n-$p-$q-$k-$nsd".replace(".", "")}",
+          "xTitle": "Average node degree",
+          "x": ${dList.sorted()},
+          "solutionList": ${names.map { """ "${nameMapping[it] ?: it}" """ }},
+          "yTitle": "# succ S-D pairs",
+          "y": ${results3Q}
         }""".trimIndent()
     )
   }
@@ -293,6 +346,36 @@ class Plot {
         rlist.map { it.majorPaths.filter { it.succ > 0 }.distinctBy { it.path.first() to it.path.last() }.size.toDouble() }.average()
       }
     }
+
+    val resultsQ = names.map { name ->
+      pList.sorted().map { p ->
+        val rlist = topoRange.flatMap { topoIdx ->
+          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name) + ".txt")
+        }
+        
+        rlist.map { it.majorPaths.sumByDouble { it.qualifiedSucc.toDouble() } }.average()
+      }
+    }
+    
+    val results2Q = names.map { name ->
+      pList.sorted().map { p ->
+        val rlist = topoRange.flatMap { topoIdx ->
+          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name) + ".txt")
+        }
+        
+        rlist.map { it.majorPaths.count { it.qualifiedSucc > 0 }.toDouble() }.average()
+      }
+    }
+    
+    val results3Q = names.map { name ->
+      pList.sorted().map { p ->
+        val rlist = topoRange.flatMap { topoIdx ->
+          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name) + ".txt")
+        }
+        
+        rlist.map { it.majorPaths.filter { it.qualifiedSucc > 0 }.distinctBy { it.path.first() to it.path.last() }.size.toDouble() }.average()
+      }
+    }
     
     children += listOf(
       """
@@ -319,6 +402,30 @@ class Plot {
           "solutionList": ${names.map { """ "${nameMapping[it] ?: it}" """ }},
           "yTitle": "# succ S-D pairs",
           "y": ${results3}
+        }""".trimIndent(),"""
+        {
+          "name": "${"qualified-throughput-$d-$n-p-$q-$k-$nsd".replace(".", "")}",
+          "xTitle": "Average channel success rate",
+          "x": ${pList.sorted()},
+          "solutionList": ${names.map { """ "${nameMapping[it] ?: it}" """ }},
+          "yTitle": "Throughput (eps)",
+          "y": ${resultsQ}
+        }""".trimIndent(), """
+        {
+          "name": "${"qualified-succ-paths-$d-$n-p-$q-$k-$nsd".replace(".", "")}",
+          "xTitle": "Average channel success rate",
+          "x": ${pList.sorted()},
+          "solutionList": ${names.map { """ "${nameMapping[it] ?: it}" """ }},
+          "yTitle": "# succ main paths",
+          "y": ${results2Q}
+        }""".trimIndent(), """
+        {
+          "name": "${"qualified-succ-pairs-$d-$n-p-$q-$k-$nsd".replace(".", "")}",
+          "xTitle": "Average channel success rate",
+          "x": ${pList.sorted()},
+          "solutionList": ${names.map { """ "${nameMapping[it] ?: it}" """ }},
+          "yTitle": "# succ S-D pairs",
+          "y": ${results3Q}
         }""".trimIndent()
     )
   }
@@ -354,6 +461,35 @@ class Plot {
         rlist.map { it.majorPaths.filter { it.succ > 0 }.distinctBy { it.path.first() to it.path.last() }.size.toDouble() }.average()
       }
     }
+    val resultsQ = names.map { name ->
+      nList.sorted().map { n ->
+        val rlist = topoRange.flatMap { topoIdx ->
+          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name) + ".txt")
+        }
+        
+        rlist.map { it.majorPaths.sumByDouble { it.qualifiedSucc.toDouble() } }.average()
+      }
+    }
+    
+    val results2Q = names.map { name ->
+      nList.sorted().map { n ->
+        val rlist = topoRange.flatMap { topoIdx ->
+          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name) + ".txt")
+        }
+        
+        rlist.map { it.majorPaths.count { it.qualifiedSucc > 0 }.toDouble() }.average()
+      }
+    }
+    
+    val results3Q = names.map { name ->
+      nList.sorted().map { n ->
+        val rlist = topoRange.flatMap { topoIdx ->
+          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name) + ".txt")
+        }
+        
+        rlist.map { it.majorPaths.filter { it.qualifiedSucc > 0 }.distinctBy { it.path.first() to it.path.last() }.size.toDouble() }.average()
+      }
+    }
     
     children += listOf(
       """
@@ -386,6 +522,36 @@ class Plot {
           "yTitle": "# succ S-D pairs",
           "x": ${nList.sorted()},
           "y": ${results3}
+        }""".trimIndent(),"""
+        {
+          "name": "${"qualified-throughput-$d-n-$p-$q-$k-$nsd".replace(".", "")}",
+          "solutionList": ${names.map { """ "${nameMapping[it] ?: it}" """ }},
+          "xTitle": "|V|",
+          "xLog" : true,
+          "xTicks&Labels": [${nList.sorted()}, ${nList.sorted().map { """ "$it" """ }}],
+          "yTitle": "Throughput (eps)",
+          "x": ${nList.sorted()},
+          "y": ${resultsQ}
+        }""".trimIndent(), """
+        {
+          "name": "${"qualified-succ-paths-$d-n-$p-$q-$k-$nsd".replace(".", "")}",
+          "solutionList": ${names.map { """ "${nameMapping[it] ?: it}" """ }},
+          "xTitle": "|V|",
+          "xLog" : true,
+          "xTicks&Labels": [${nList.sorted()}, ${nList.sorted().map { """ "$it" """ }}],
+          "yTitle": "# succ main paths",
+          "x": ${nList.sorted()},
+          "y": ${results2Q}
+        }""".trimIndent(), """
+        {
+          "name": "${"qualified-succ-pairs-$d-n-$p-$q-$k-$nsd".replace(".", "")}",
+          "solutionList": ${names.map { """ "${nameMapping[it] ?: it}" """ }},
+          "xTitle": "|V|",
+          "xLog" : true,
+          "xTicks&Labels": [${nList.sorted()}, ${nList.sorted().map { """ "$it" """ }}],
+          "yTitle": "# succ S-D pairs",
+          "x": ${nList.sorted()},
+          "y": ${results3Q}
         }""".trimIndent()
     )
   }
@@ -421,6 +587,35 @@ class Plot {
         rlist.map { it.majorPaths.filter { it.succ > 0 }.distinctBy { it.path.first() to it.path.last() }.size.toDouble() }.average()
       }
     }
+    val resultsQ = names.map { name ->
+      qList.sorted().map { q ->
+        val rlist = topoRange.flatMap { topoIdx ->
+          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name) + ".txt")
+        }
+        
+        rlist.map { it.majorPaths.sumByDouble { it.qualifiedSucc.toDouble() } }.average()
+      }
+    }
+    
+    val results2Q = names.map { name ->
+      qList.sorted().map { q ->
+        val rlist = topoRange.flatMap { topoIdx ->
+          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name) + ".txt")
+        }
+        
+        rlist.map { it.majorPaths.count { it.qualifiedSucc > 0 }.toDouble() }.average()
+      }
+    }
+    
+    val results3Q = names.map { name ->
+      qList.sorted().map { q ->
+        val rlist = topoRange.flatMap { topoIdx ->
+          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name) + ".txt")
+        }
+        
+        rlist.map { it.majorPaths.filter { it.qualifiedSucc > 0 }.distinctBy { it.path.first() to it.path.last() }.size.toDouble() }.average()
+      }
+    }
     
     children += listOf(
       """
@@ -447,6 +642,30 @@ class Plot {
           "solutionList": ${names.map { """ "${nameMapping[it] ?: it}" """ }},
           "yTitle": "# succ S-D pairs",
           "y": ${results3}
+        }""".trimIndent(),"""
+        {
+          "name": "${"qualified-throughput-$d-$n-$p-q-$k-$nsd".replace(".", "")}",
+          "xTitle": "Swapping success rate",
+          "x": ${qList.sorted()},
+          "solutionList": ${names.map { """ "${nameMapping[it] ?: it}" """ }},
+          "yTitle": "Throughput (eps)",
+          "y": ${resultsQ}
+        }""".trimIndent(), """
+        {
+          "name": "${"qualified-succ-paths-$d-$n-$p-q-$k-$nsd".replace(".", "")}",
+          "xTitle": "Swapping success rate",
+          "x": ${qList.sorted()},
+          "solutionList": ${names.map { """ "${nameMapping[it] ?: it}" """ }},
+          "yTitle": "# succ main paths",
+          "y": ${results2Q}
+        }""".trimIndent(), """
+        {
+          "name": "${"qualified-succ-pairs-$d-$n-$p-q-$k-$nsd".replace(".", "")}",
+          "xTitle": "Swapping success rate",
+          "x": ${qList.sorted()},
+          "solutionList": ${names.map { """ "${nameMapping[it] ?: it}" """ }},
+          "yTitle": "# succ S-D pairs",
+          "y": ${results3Q}
         }""".trimIndent()
     )
   }
@@ -482,6 +701,35 @@ class Plot {
         rlist.map { it.majorPaths.filter { it.succ > 0 }.distinctBy { it.path.first() to it.path.last() }.size.toDouble() }.average()
       }
     }
+    val resultsQ = names.map { name ->
+      kList.sorted().map { k ->
+        val rlist = topoRange.flatMap { topoIdx ->
+          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name) + ".txt")
+        }
+        
+        rlist.map { it.majorPaths.sumByDouble { it.qualifiedSucc.toDouble() } }.average()
+      }
+    }
+    
+    val results2Q = names.map { name ->
+      kList.sorted().map { k ->
+        val rlist = topoRange.flatMap { topoIdx ->
+          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name) + ".txt")
+        }
+        
+        rlist.map { it.majorPaths.count { it.qualifiedSucc > 0 }.toDouble() }.average()
+      }
+    }
+    
+    val results3Q = names.map { name ->
+      kList.sorted().map { k ->
+        val rlist = topoRange.flatMap { topoIdx ->
+          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name) + ".txt")
+        }
+        
+        rlist.map { it.majorPaths.filter { it.qualifiedSucc > 0 }.distinctBy { it.path.first() to it.path.last() }.size.toDouble() }.average()
+      }
+    }
     
     children += listOf(
       """
@@ -511,6 +759,33 @@ class Plot {
           "solutionList": ${names.map { """ "${nameMapping[it] ?: it}" """ }},
           "yTitle": "# succ S-D pairs",
           "y": ${results3}
+        }""".trimIndent(),"""
+        {
+          "name": "${"qualified-throughput-$d-$n-$p-$q-k-$nsd".replace(".", "")}",
+          "xTitle": "Link state broadcast range k",
+          "x": ${listOf(0, 3, 6, 9)},
+          "xTicks&Labels": [${listOf(0, 3, 6, 9)}, ["0", "3", "6", "∞"]],
+          "solutionList": ${names.map { """ "${nameMapping[it] ?: it}" """ }},
+          "yTitle": "Throughput (eps)",
+          "y": ${resultsQ}
+        }""".trimIndent(), """
+        {
+          "name": "${"qualified-succ-paths-$d-$n-$p-$q-k-$nsd".replace(".", "")}",
+          "xTitle": "Link state broadcast range k",
+          "x": ${listOf(0, 3, 6, 9)},
+          "xTicks&Labels": [${listOf(0, 3, 6, 9)}, ["0", "3", "6", "∞"]],
+          "solutionList": ${names.map { """ "${nameMapping[it] ?: it}" """ }},
+          "yTitle": "# succ main paths",
+          "y": ${results2Q}
+        }""".trimIndent(), """
+        {
+          "name": "${"qualified-succ-pairs-$d-$n-$p-$q-k-$nsd".replace(".", "")}",
+          "xTitle": "Link state broadcast range k",
+          "x": ${listOf(0, 3, 6, 9)},
+          "xTicks&Labels": [${listOf(0, 3, 6, 9)}, ["0", "3", "6", "∞"]],
+          "solutionList": ${names.map { """ "${nameMapping[it] ?: it}" """ }},
+          "yTitle": "# succ S-D pairs",
+          "y": ${results3Q}
         }""".trimIndent()
     )
   }

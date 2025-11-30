@@ -86,10 +86,12 @@ fun sim() {
           OnlineAlgorithm(Topo(topo), allowRecoveryPaths = true).apply {
             setDefaultThreshold(FTH)
           },
+          QcastPur(Topo(topo), allowRecoveryPaths = true).apply {
+            setDefaultThreshold(FTH)
+          },
           // Your fidelity-guaranteed online algorithm (internal F_TH = 0.7)
-          FidelityGuaranteedOnlineAlgorithm(Topo(topo), allowRecoveryPaths = true),
-          FG_Online_v2(Topo(topo), allowRecoveryPaths = true)
-        )
+          // FidelityGuaranteedOnlineAlgorithm(Topo(topo), allowRecoveryPaths = true),
+          FG_Online_v2(Topo(topo), allowRecoveryPaths = true)        )
 
         algorithms.filter { solver ->
           val done = try {
@@ -183,9 +185,12 @@ fun simpleTest() {
       OnlineAlgorithm(Topo(topo), allowRecoveryPaths = true).apply {
           setDefaultThreshold(FTH)
       },
-      FidelityGuaranteedOnlineAlgorithm(Topo(topo), allowRecoveryPaths = true).apply {
+      QcastPur(Topo(topo), allowRecoveryPaths = true).apply {
           setDefaultThreshold(FTH)
       },
+      // FidelityGuaranteedOnlineAlgorithm(Topo(topo), allowRecoveryPaths = true).apply {
+      //     setDefaultThreshold(FTH)
+      // },
       FG_Online_v2(Topo(topo), allowRecoveryPaths = true).apply {
           setDefaultThreshold(FTH)
       }

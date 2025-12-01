@@ -13,7 +13,7 @@ import quantum.PurificationCostTable
 open class QcastPur(topo: Topo, val allowRecoveryPaths: Boolean = true) : Algorithm(topo) {
   override val name: String = "Q-CAST-PUR"
 
-  protected var defaultFth: Double = 0.7
+  protected var defaultFth: Double = 0.8
 
   private val PUR_DETERMINISTIC = false
   private val C_PUR = 1  // cost units per purification attempt

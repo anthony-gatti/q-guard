@@ -7,19 +7,19 @@ import quantum.tryPurifyOnEdge
 import utils.ReducibleLazyEvaluation
 import utils.format
 
-class FG_Online_v2(
+class Q_GUARD(
     topo: Topo,
     allowRecoveryPaths: Boolean = true
 ) : OnlineAlgorithm(topo, allowRecoveryPaths) {
 
     // label for logs / plot legends
-    override val name: String = "FG-v2"
+    override val name: String = "QG"
 
     private val ENABLE_PURIFICATION = true
     private val PUR_DETERMINISTIC = false
     private val C_PUR = 1  // cost unit per attempt
 
-    private val F_TH = 0.7 // hardcoded for now
+    private val F_TH = 0.8 // hardcoded for now
     
     private val reqFth: MutableMap<Pair<Int,Int>, Double> = mutableMapOf()
 

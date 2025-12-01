@@ -79,7 +79,7 @@ fun sim() {
         topo.k = k
         topo.alpha = alpha
 
-        val FTH = 0.7
+        val FTH = 0.8
 
         val algorithms = mutableListOf<Algorithm>(
           // Q-CAST with recovery paths, evaluated at F_th = 0.7
@@ -91,7 +91,7 @@ fun sim() {
           },
           // Your fidelity-guaranteed online algorithm (internal F_TH = 0.7)
           // FidelityGuaranteedOnlineAlgorithm(Topo(topo), allowRecoveryPaths = true),
-          FG_Online_v2(Topo(topo), allowRecoveryPaths = true)        )
+          Q_GUARD(Topo(topo), allowRecoveryPaths = true)        )
 
         algorithms.filter { solver ->
           val done = try {
@@ -179,7 +179,7 @@ fun simpleTest() {
     val topo = Topo(netTopology.toString().lines().mapIndexed { i, line -> if (i == 1) a.toString() else line }.joinToString("\n"))
     println(topo.getStatistics())
 
-    val FTH = 0.7
+    val FTH = 0.8
     
     val algorithms = listOf(
       OnlineAlgorithm(Topo(topo), allowRecoveryPaths = true).apply {
@@ -191,7 +191,7 @@ fun simpleTest() {
       // FidelityGuaranteedOnlineAlgorithm(Topo(topo), allowRecoveryPaths = true).apply {
       //     setDefaultThreshold(FTH)
       // },
-      FG_Online_v2(Topo(topo), allowRecoveryPaths = true).apply {
+      Q_GUARD(Topo(topo), allowRecoveryPaths = true).apply {
           setDefaultThreshold(FTH)
       }
 //      , OnlineAlgorithmWithRecoveryPaths(Topo(topo))

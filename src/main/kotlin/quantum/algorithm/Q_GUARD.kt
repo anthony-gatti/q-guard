@@ -19,7 +19,7 @@ class Q_GUARD(
     private val PUR_DETERMINISTIC = false
     private val C_PUR = 1  // cost unit per attempt
 
-    private val F_TH = 0.8 // hardcoded for now
+    private val F_TH = 0.7 // hardcoded for now
     
     private val reqFth: MutableMap<Pair<Int,Int>, Double> = mutableMapOf()
 

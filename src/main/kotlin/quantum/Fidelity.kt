@@ -14,7 +14,8 @@ object Fidelity {
     // F(0) = 1/4 + (3/4) * exp(-1 / tau)
     fun freshLinkFidelity(tau: Double): Double {
         val base = 0.25
-        return (base + (1.0 - base) * kotlin.math.exp(-1.0 / tau)).coerceIn(base, 1.0)
+        val default_tau = 7.0
+        return (base + (1.0 - base) * kotlin.math.exp(-1.0 / default_tau)).coerceIn(base, 1.0)
     }
 
     // Keep for reference/tests only; you’re not using time decay > 0.
@@ -27,6 +28,28 @@ object Fidelity {
         val wth = wFromF(Fth)
         val wHop = Math.pow(wth, 1.0 / hops)
         return fFromW(wHop)
+    }
+
+    /**
+     * Compute per-hop target fidelities for a path, using a weighted split
+     * of the end-to-end Werner threshold. weights[i] is a non-negative
+     * "difficulty" for hop i (e.g., physical distance of that link).
+     *
+     * If each hop exactly reaches its target, the product of Werner
+     * parameters equals w(Fth), so the end-to-end fidelity meets Fth.
+     */
+    fun perHopWeightedTargetsF(Fth: Double, weights: List<Double>): List<Double> {
+        require(weights.isNotEmpty()) { "weights must be non-empty" }
+
+        val wth = wFromF(Fth)
+        val sumW = weights.sum()
+        require(sumW > 0.0) { "sum of weights must be > 0" }
+
+        return weights.map { wi ->
+            val alpha = wi / sumW          // fraction of "difficulty budget"
+            val wTarget = Math.pow(wth, alpha)
+            fFromW(wTarget)
+        }
     }
 
     // BBPSSW for Werner inputs: returns (F', p_succ)

@@ -7,13 +7,13 @@ import quantum.tryPurifyOnEdge
 import utils.ReducibleLazyEvaluation
 import utils.format
 
-class FG_Online_v3(
+class Q_GUARD_v2(
     topo: Topo,
     allowRecoveryPaths: Boolean = true
 ) : OnlineAlgorithm(topo, allowRecoveryPaths) {
 
     // label for logs / plot legends
-    override val name: String = "FG-v3"
+    override val name: String = "QG-v2"
 
     private val ENABLE_PURIFICATION = true
     private val PUR_DETERMINISTIC = false
@@ -59,8 +59,9 @@ class FG_Online_v3(
         }
 
         val hops = path.size - 1
-        val perHopTargetDefault =
-            defaultPerHopTarget ?: Fidelity.perHopTargetF(fth, hops)
+
+        // Fallback if caller does not override per-hop targets
+        val baseTarget: Double = defaultPerHopTarget ?: Fidelity.perHopTargetF(fth, hops)
 
         val hopInfo = topo.perHopFreshF(path)
         var totalPurCostExg = 0
@@ -76,18 +77,20 @@ class FG_Online_v3(
             val v = edge.n2
             val key = if (u.id <= v.id) Pair(u, v) else Pair(v, u)
 
-            val targetF = overrideTargets?.get(key) ?: perHopTargetDefault
+            // Either caller-provided edge-specific target, or the common base target
+            val targetF = overrideTargets?.get(key) ?: baseTarget
 
             val rawCost = PurificationCostTable.minCostToReach(F0, targetF)
-            // Analytic feasibility (same as Option A)
-            if (rawCost == Int.MAX_VALUE) {
+
+            // Analytic feasibility
+            if (rawCost == Int.MAX_VALUE || rawCost > perHopBudget) {
                 exgFeasible = false
                 break
             }
 
             totalPurCostExg += rawCost
 
-            // Realized availability on this hop
+            // Rough model: number of raw pairs needed grows ~2^(#rounds)
             val requiredPairs =
                 if (rawCost <= 0) 1 else (1 shl rawCost).coerceAtMost(1 shl 30)
 
@@ -110,7 +113,7 @@ class FG_Online_v3(
         if (!exgFeasible) {
             return PathExgResult(
                 path = path,
-                perHopTarget = perHopTargetDefault,
+                perHopTarget = baseTarget,
                 exg = 0.0,
                 feasible = false,
                 totalPurCostExg = totalPurCostExg
@@ -136,7 +139,7 @@ class FG_Online_v3(
 
         return PathExgResult(
             path = path,
-            perHopTarget = perHopTargetDefault,
+            perHopTarget = baseTarget,
             exg = exg,
             feasible = true,
             totalPurCostExg = totalPurCostExg
@@ -152,14 +155,43 @@ class FG_Online_v3(
             val predF = topo.predictedEndToEndFidelity(majorPath)
             val hops = majorPath.size - 1
             val FTH = fthFor(majorPath.first(), majorPath.last())
-            val perHopTargetMajor = Fidelity.perHopTargetF(FTH, hops)
+
+            val hopInfoMajor = topo.perHopFreshF(majorPath)
+            val hopF0s = hopInfoMajor.map { triple -> triple.third }
+
+            // Distance/quality-weighted per-hop targets for the *major path*
+            val hopTargetsMajor: List<Double> =
+                Fidelity.perHopWeightedTargetsF(FTH, hopF0s)
+
+            // For convenience (logging / defaults), keep an average target
+            val perHopTargetMajor: Double =
+                if (hopTargetsMajor.isNotEmpty()) hopTargetsMajor.average() else 0.0
+
+            // Map each major-path edge -> its weighted target fidelity
+            val perEdgeTargetMajor: MutableMap<Pair<Node, Node>, Double> = mutableMapOf()
+            majorPath
+                .dropLast(1).zip(majorPath.drop(1))
+                .zip(hopTargetsMajor)
+                .forEach { (uv, targetF) ->
+                    val (u, v) = uv
+                    val key = if (u.id <= v.id) Pair(u, v) else Pair(v, u)
+                    perEdgeTargetMajor[key] = targetF
+                }
 
             val wTh = Fidelity.wFromF(FTH)
 
-            // Debug: which hops are weak on the *fresh* link fidelity
-            val hopInfoMajor = topo.perHopFreshF(majorPath)
+            // Debug: which hops are weak relative to their *own* weighted target
             val weakStr = hopInfoMajor
-                .filter { triple -> triple.third + 1e-12 < perHopTargetMajor }
+                .filter { triple ->
+                    val edge = triple.first
+                    val F0 = triple.third
+                    val key = if (edge.n1.id <= edge.n2.id)
+                        Pair(edge.n1, edge.n2)
+                    else
+                        Pair(edge.n2, edge.n1)
+                    val target = perEdgeTargetMajor[key] ?: perHopTargetMajor
+                    F0 + 1e-12 < target
+                }
                 .joinToString(prefix = "[", postfix = "]") { triple ->
                     val edge = triple.first
                     val F0 = triple.third
@@ -190,29 +222,11 @@ class FG_Online_v3(
                 )
             }
 
-            // === Segment budgets: detour per-hop targets ===
-            val detourPerHopTarget: MutableMap<Path, Double> = mutableMapOf()
-
-            recoveryPaths.forEach { (_, _, rp) ->
-                val s1 = majorPath.indexOf(rp.first())
-                val s2 = majorPath.indexOf(rp.last())
-
-                val rMajor = s2 - s1           // # hops in the major segment replaced
-                val rDetour = rp.size - 1      // # hops in the detour
-
-                if (rMajor <= 0 || rDetour <= 0) return@forEach
-
-                // Segment budget in Werner: w_seg = w_th^(rMajor / L)
-                val wSeg = Math.pow(wTh, rMajor.toDouble() / hops.toDouble())
-
-                // Per-hop Werner target for the detour: w_detour = w_seg^(1 / rDetour)
-                val wDetourHop = Math.pow(wSeg, 1.0 / rDetour.toDouble())
-
-                // Convert back to fidelity
-                val fDetourHop = Fidelity.fFromW(wDetourHop)
-
-                detourPerHopTarget[rp] = fDetourHop
-            }
+            val edges = (0..majorPath.size - 2).zip(1..majorPath.size - 1)
+            val rpToWidth = recoveryPaths
+                .map { it.third to it.second }
+                .toMap()
+                .toMutableMap()
 
             // For each recovery path, remember which major-path segment [s1, s2] it replaces
             val rpToSegmentRange: MutableMap<Path, Pair<Int, Int>> = mutableMapOf()
@@ -223,12 +237,6 @@ class FG_Online_v3(
                     rpToSegmentRange[rp] = s1 to s2
                 }
             }
-
-            val edges = (0..majorPath.size - 2).zip(1..majorPath.size - 1)
-            val rpToWidth = recoveryPaths
-                .map { it.third to it.second }
-                .toMap()
-                .toMutableMap()
 
             for (i in 1..width) {
                 // for w-width major path, treat it as w different paths, and repair separately
@@ -305,19 +313,25 @@ class FG_Online_v3(
                         val effectiveWidthMajorSeg = minOf(width, widthMajorSegPhase4)
                         val effectiveWidthDetourSeg = minOf(width, widthDetourSegPhase4)
 
-                        // Compute EXG for the major segment using the global per-hop target
+                        // EXG for the major segment using the global per-hop target
                         val exgMajorSeg = computeExgForPath(
                             majorSeg,
                             effectiveWidthMajorSeg,
                             FTH,
-                            overrideTargets = null,
-                            defaultPerHopTarget = perHopTargetMajor
+                            overrideTargets = perEdgeTargetMajor,
+                            defaultPerHopTarget = null
                         )
 
-                        // Compute EXG for the detour segment using its segment-specific per-hop target
-                        val perEdgeTargetsSeg = mutableMapOf<Pair<Node, Node>, Double>()
-                        val fDetourHop = detourPerHopTarget[rp] ?: perHopTargetMajor
+                        // Compute a per-hop target for the detour segment by reusing the segment budget
+                        val rMajor = s2 - s1          // # hops in the major segment replaced
+                        val rDetour = rp.size - 1     // # hops in the detour
 
+                        val wTh = Fidelity.wFromF(FTH)
+                        val wSeg = Math.pow(wTh, rMajor.toDouble() / hops.toDouble())
+                        val wDetourHop = Math.pow(wSeg, 1.0 / rDetour.toDouble())
+                        val fDetourHop = Fidelity.fFromW(wDetourHop)
+
+                        val perEdgeTargetsSeg = mutableMapOf<Pair<Node, Node>, Double>()
                         rp.dropLast(1).zip(rp.drop(1)).forEach { (u, v) ->
                             val key = if (u.id <= v.id) Pair(u, v) else Pair(v, u)
                             perEdgeTargetsSeg[key] = fDetourHop
@@ -442,27 +456,36 @@ class FG_Online_v3(
 
                 lastSuccessfulPathForLog = chosenPath
 
-                // Build per-edge target fidelity for this chosen path:
-                // - detour edges get their segment-specific detour target,
-                // - all remaining major-path edges get perHopTargetMajor.
-
+                // Build per-edge target fidelity for this chosen path, using
+                // distance-weighted per-hop targets along the path.
                 val chosenPerEdgeTarget: MutableMap<Pair<Node, Node>, Double> = mutableMapOf()
 
-                // 1) Detour hops: use detourPerHopTarget[rp]
+                // 1) Detour hops: recompute the detour per-hop target the same way as in the EXG comparison
                 for (rp in realPickedRps) {
-                    val fDetourHop = detourPerHopTarget[rp] ?: perHopTargetMajor
+                    val range = rpToSegmentRange[rp] ?: continue
+                    val (s1, s2) = range
+
+                    val rMajor = s2 - s1       // # hops in the major segment replaced
+                    val rDetour = rp.size - 1  // # hops in the detour
+
+                    val wTh = Fidelity.wFromF(FTH)
+                    val wSeg = Math.pow(wTh, rMajor.toDouble() / hops.toDouble())
+                    val wDetourHop = Math.pow(wSeg, 1.0 / rDetour.toDouble())
+                    val fDetourHop = Fidelity.fFromW(wDetourHop)
+
                     rp.dropLast(1).zip(rp.drop(1)).forEach { (u, v) ->
                         val key = if (u.id <= v.id) Pair(u, v) else Pair(v, u)
                         chosenPerEdgeTarget[key] = fDetourHop
                     }
                 }
 
-                // 2) Remaining major-path hops: fill in perHopTargetMajor if not already set
+                // 2) Remaining major-path hops: use the weighted major-path target for that edge
                 chosenPath
                     .dropLast(1).zip(chosenPath.drop(1))
                     .forEach { (u, v) ->
                         val key = if (u.id <= v.id) Pair(u, v) else Pair(v, u)
-                        chosenPerEdgeTarget.putIfAbsent(key, perHopTargetMajor)
+                        val majorTarget = perEdgeTargetMajor[key] ?: perHopTargetMajor
+                        chosenPerEdgeTarget.putIfAbsent(key, majorTarget)
                     }
 
                 // ===== Runtime purification only on the chosenPath =====

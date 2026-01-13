@@ -11,7 +11,7 @@ import kotlin.collections.HashMap
 open class OnlineAlgorithm(topo: Topo, val allowRecoveryPaths: Boolean = true) : Algorithm(topo) {
   override val name: String = "Online" + if (allowRecoveryPaths) "" else "-R"
 
-  protected var defaultFth: Double = 0.8
+  protected var defaultFth: Double = 0.7
 
   fun setDefaultThreshold(fth: Double) {
     defaultFth = fth

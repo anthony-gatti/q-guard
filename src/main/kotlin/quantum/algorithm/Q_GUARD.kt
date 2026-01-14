@@ -507,33 +507,27 @@ class Q_GUARD(
                 }
 
                 // GATE: check if each hop can meet its *local* per-hop target with its best available pair
-                // var allHopsMeetTarget = true
+                var allHopsMeetTarget = true
+                val hopsOnChosen = chosenPath.dropLast(1).zip(chosenPath.drop(1))
 
-                // val hopsOnChosen = chosenPath.dropLast(1).zip(chosenPath.drop(1))
+                for ((u, v) in hopsOnChosen) {
+                    val key = if (u.id <= v.id) Pair(u, v) else Pair(v, u)
+                    val targetF = chosenPerEdgeTarget[key] ?: perHopTargetMajor
 
-                // for ((u, v) in hopsOnChosen) {
-                //     val key = if (u.id <= v.id) Pair(u, v) else Pair(v, u)
-                //     val targetF = chosenPerEdgeTarget[key] ?: perHopTargetMajor
+                    val pool = topo.linksBetween(u, v)
+                        .filter { it.entangled && it.notSwapped() && !it.utilized }
 
-                //     val pool = topo.linksBetween(u, v)
-                //         .filter { it.entangled && it.notSwapped() && !it.utilized }
+                    val bestF = pool.maxBy { link -> link.fidelity }?.fidelity ?: 0.0
 
-                //     val bestLink: Link? = pool.maxBy { link -> link.fidelity }
-                //     val bestF = bestLink?.fidelity ?: 0.0
+                    if (bestF + 1e-12 < targetF) {
+                        allHopsMeetTarget = false
+                        break
+                    }
+                }
 
-                //     if (bestF + 1e-12 < targetF) {
-                //         allHopsMeetTarget = false
-                //         break
-                //     }
-                // }
-
-                // if (!allHopsMeetTarget) {
-                //     // logWriter.appendln(
-                //     //     " EXG-GATE-BLOCK path=${chosenPath.map { it.id }} " +
-                //     //         "reason=hop_below_target"
-                //     // )
-                //     continue  // skip swaps for this width unit
-                // }
+                if (!allHopsMeetTarget) {
+                    continue  // skip swaps for this width unit
+                }
 
                 // ===== Swaps only along the chosenPath (same pattern as before) =====
                 chosenPath

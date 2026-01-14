@@ -591,47 +591,53 @@ class Q_GUARD_v2(
 
             // === Same success / fidelity logic, now using lastSuccessfulPathForLog ===
             var succ = 0
+            var qualifiedSuccDirect = 0
+            var estFDirect = 0.0
+
             if (majorPath.size > 2) {
                 succ = topo.getEstablishedEntanglements(
                     majorPath.first(),
                     majorPath.last()
                 ).size - oldNumOfPairs
             } else {
-                val SDlinks = majorPath.first().links
+                val u = majorPath.first()
+                val v = majorPath.last()
+
+                // Pick the best available direct links FIRST (before utilization)
+                val SDlinks = u.links
                     .filter { link ->
                         link.entangled &&
-                            !link.swappedAt(majorPath.first()) &&
-                            link.contains(majorPath.last()) &&
-                            !link.utilized
+                        !link.swappedAt(u) &&
+                        link.contains(v) &&
+                        !link.utilized
                     }
-                    .sortedBy { link -> link.id }
+                    .sortedByDescending { it.fidelity }  // <-- important improvement
 
                 if (SDlinks.isNotEmpty()) {
                     succ = SDlinks.size.coerceAtMost(width)
-                    (0 until succ).forEach { pid ->
-                        SDlinks[pid].utilize()
-                    }
+                    val used = SDlinks.take(succ)
+
+                    // These are the delivered direct pairs; measure them directly.
+                    estFDirect = used.maxOf { it.fidelity }
+                    qualifiedSuccDirect = used.count { it.fidelity + 1e-12 >= FTH }
+
+                    used.forEach { it.utilize() }
                 }
             }
 
-            val estF = if (succ > 0) {
-                if (majorPath.size == 2) {
-                    val u = majorPath.first()
-                    val v = majorPath.last()
-                    topo.linksBetween(u, v)
-                        .filter { link ->
-                            link.entangled && link.notSwapped() && !link.utilized
-                        }
-                        .maxBy { link -> link.fidelity }   // Kotlin 1.3
-                        ?.fidelity ?: 0.0
-                } else if (lastSuccessfulPathForLog != null && lastSuccessfulPathForLog!!.size > 1) {
+            val estF = when {
+                succ <= 0 -> 0.0
+                majorPath.size == 2 -> estFDirect
+                lastSuccessfulPathForLog != null && lastSuccessfulPathForLog!!.size > 1 ->
                     topo.pathEndToEndFidelity(lastSuccessfulPathForLog!!)
-                } else {
-                    0.0
-                }
-            } else 0.0
+                else -> 0.0
+            }
 
-            val qualifiedSucc = if (succ > 0 && estF + 1e-12 >= FTH) succ else 0
+            val qualifiedSucc = when {
+                succ <= 0 -> 0
+                majorPath.size == 2 -> qualifiedSuccDirect
+                else -> if (estF + 1e-12 >= FTH) succ else 0
+            }
 
             logWriter.appendln(
                 """ ${majorPath.map { node -> node.id }}, $width $succ $estF $qualifiedSucc"""

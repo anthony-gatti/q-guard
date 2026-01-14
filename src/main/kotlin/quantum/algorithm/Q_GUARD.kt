@@ -541,13 +541,13 @@ class Q_GUARD(
                             .filter { link ->
                                 link.entangled && !link.swappedAt(n) && link.contains(prev) && !link.utilized
                             }
-                            .sortedBy { link -> link.id }
+                            .sortedByDescending { link -> link.fidelity }
                             .take(1)
                         val nextLinks = n.links
                             .filter { link ->
                                 link.entangled && !link.swappedAt(n) && link.contains(next) && !link.utilized
                             }
-                            .sortedBy { link -> link.id }
+                            .sortedByDescending { link -> link.fidelity }
                             .take(1)
 
                         prevLinks.zip(nextLinks).forEach { (l1, l2) ->

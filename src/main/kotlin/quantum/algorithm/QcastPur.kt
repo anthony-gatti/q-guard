@@ -9,6 +9,8 @@ import java.util.*
 import kotlin.collections.HashMap
 import quantum.tryPurifyOnEdge
 import quantum.PurificationCostTable
+import quantum.Fidelity
+import quantum.randGen
 
 open class QcastPur(topo: Topo, val allowRecoveryPaths: Boolean = true) : Algorithm(topo) {
   override val name: String = "Q-CAST-PUR"
@@ -200,8 +202,54 @@ open class QcastPur(topo: Topo, val allowRecoveryPaths: Boolean = true) : Algori
   }
   
   open override fun P4() {
+    fun newFidelitiesOnly(oldF: List<Double>, newF: List<Double>, scale: Double = 1e12): MutableList<Double> {
+      val counts = HashMap<Long, Int>()
+      fun key(x: Double): Long = Math.round(x * scale)
+
+      oldF.forEach { f ->
+        val k = key(f)
+        counts[k] = (counts[k] ?: 0) + 1
+      }
+
+      val out = mutableListOf<Double>()
+      newF.forEach { f ->
+        val k = key(f)
+        val c = counts[k] ?: 0
+        if (c > 0) counts[k] = c - 1 else out.add(f)
+      }
+      return out
+    }
+    /**
+     * Naive end-to-end purification baseline:
+     * repeatedly take the 2 worst (still-unqualified) pairs, BBPSSW-purify them, keep output on success.
+     */
+    fun purifyEndToEndPool(poolIn: List<Double>, fth: Double): List<Double> {
+      val pool = poolIn.toMutableList()
+      while (true) {
+        if (pool.size < 2) break
+        pool.sortDescending()
+
+        val firstUnqualified = pool.indexOfFirst { it + 1e-12 < fth }
+        if (firstUnqualified == -1) break
+        if (pool.size - firstUnqualified < 2) break
+
+        val Fa = pool[firstUnqualified]
+        val Fb = pool[firstUnqualified + 1]
+        pool.removeAt(firstUnqualified + 1)
+        pool.removeAt(firstUnqualified)
+
+        val (Fp, ps) = Fidelity.purifyWernerOnce(Fa, Fb)
+        val success = randGen.nextDouble() <= ps
+        if (success) pool.add(Fp)
+      }
+      return pool
+    }
+    
     majorPaths.forEach { pathWithWidth ->
       val (_, width, majorPath) = pathWithWidth
+      val src = majorPath.first()
+      val dst = majorPath.last()
+      val oldFids = topo.getEstablishedEntanglementFidelities(src, dst)
       val oldNumOfPairs = topo.getEstablishedEntanglements(majorPath.first(), majorPath.last()).size  // just for logging
       
       val recoveryPaths = this.recoveryPaths.get(pathWithWidth)!!.sortedBy { it.third.size * 10000 + majorPath.indexOf(it.third.first()) }
@@ -312,12 +360,13 @@ open class QcastPur(topo: Topo, val allowRecoveryPaths: Boolean = true) : Algori
       val src = majorPath.first()
       val dst = majorPath.last()
 
-      var succ = 0
-      if (majorPath.size > 2) {
-        // multi-hop: count new SD entanglements created along this major path
-        succ = topo.getEstablishedEntanglements(src, dst).size - oldNumOfPairs
+      val FTH = defaultFth
+
+      val deliveredFids: List<Double> = if (majorPath.size > 2) {
+        val afterFids = topo.getEstablishedEntanglementFidelities(src, dst)
+        newFidelitiesOnly(oldFids, afterFids)
       } else {
-        // single-hop SD: just look at direct links and utilize up to width
+        // 1-hop: fidelity is per delivered direct link
         val SDlinks = src.links
           .filter { link ->
             link.entangled &&
@@ -325,44 +374,18 @@ open class QcastPur(topo: Topo, val allowRecoveryPaths: Boolean = true) : Algori
             link.contains(dst) &&
             !link.utilized
           }
-          .sortedBy { it.id }
-
+          .sortedByDescending { it.fidelity } // optional: take best direct pairs
         if (SDlinks.isNotEmpty()) {
-          succ = SDlinks.size.coerceAtMost(width)
-          (0 until succ).forEach { pid ->
-            SDlinks[pid].utilize()
-          }
-        }
+          val succDirect = SDlinks.size.coerceAtMost(width)
+          val used = SDlinks.take(succDirect)
+          used.forEach { it.utilize() }
+          used.map { it.fidelity }
+        } else emptyList()
       }
 
-      // === Analytic end-to-end purification on top of that ===
-      val FTH = defaultFth
-      val estF = if (succ > 0 && majorPath.size > 1) {
-        // Same approximation as original Q-CAST: treat as if along majorPath
-        topo.pathEndToEndFidelity(majorPath)
-      } else {
-        0.0
-      }
-
-      val qualifiedSucc = if (succ <= 0) {
-        0
-      } else if (estF + 1e-12 >= FTH) {
-        // Already above threshold: no purification needed.
-        succ
-      } else {
-        // Analytic BBPSSW-style purification baseline.
-        val cost = PurificationCostTable.minCostToReach(estF, FTH)
-
-        if (cost == Int.MAX_VALUE) {
-          // Cannot reach threshold at all with this starting fidelity.
-          0
-        } else {
-          val requiredPairs =
-            if (cost <= 0) 1 else (1 shl cost)  // same interpretation as FG-v2
-
-          succ / requiredPairs  // integer division: max # of qualified purified pairs
-        }
-      }
+      val succ = deliveredFids.size
+      val estF = if (deliveredFids.isNotEmpty()) deliveredFids.average() else 0.0
+      val qualifiedSucc = deliveredFids.count { it + 1e-12 >= FTH }
 
       logWriter.appendln(""" ${majorPath.map { it.id }}, $width $succ $estF $qualifiedSucc""")
       pathToRecoveryPaths[pathWithWidth].forEach {

@@ -165,8 +165,29 @@ open class OnlineAlgorithm(topo: Topo, val allowRecoveryPaths: Boolean = true) :
   val pathToRecoveryPaths = ReducibleLazyEvaluation<PickedPath, MutableList<RecoveryPath>>({ mutableListOf() })
   
   open override fun P4() {
+    fun newFidelitiesOnly(oldF: List<Double>, newF: List<Double>, scale: Double = 1e12): MutableList<Double> {
+      val counts = HashMap<Long, Int>()
+      fun key(x: Double): Long = Math.round(x * scale)
+
+      oldF.forEach { f ->
+        val k = key(f)
+        counts[k] = (counts[k] ?: 0) + 1
+      }
+
+      val out = mutableListOf<Double>()
+      newF.forEach { f ->
+        val k = key(f)
+        val c = counts[k] ?: 0
+        if (c > 0) counts[k] = c - 1 else out.add(f)
+      }
+      return out
+    }
+
     majorPaths.forEach { pathWithWidth ->
       val (_, width, majorPath) = pathWithWidth
+      val src = majorPath.first()
+      val dst = majorPath.last()
+      val oldFids = topo.getEstablishedEntanglementFidelities(src, dst)
       val oldNumOfPairs = topo.getEstablishedEntanglements(majorPath.first(), majorPath.last()).size  // just for logging
       
       val recoveryPaths = this.recoveryPaths.get(pathWithWidth)!!.sortedBy { it.third.size * 10000 + majorPath.indexOf(it.third.first()) }
@@ -273,28 +294,31 @@ open class OnlineAlgorithm(topo: Topo, val allowRecoveryPaths: Boolean = true) :
         }
       }
       
-      var succ = 0
-      if (majorPath.size > 2) {
-        succ = topo.getEstablishedEntanglements(majorPath.first(), majorPath.last()).size - oldNumOfPairs
-      } else {
-        val SDlinks = majorPath.first().links.filter { it.entangled && !it.swappedAt(majorPath.first()) && it.contains(majorPath.last()) && !it.utilized }.sortedBy { it.id }
-        if (SDlinks.isNotEmpty()) {
-          succ = SDlinks.size.coerceAtMost(width)
-          (0..succ - 1).forEach { pid ->
-            SDlinks[pid].utilize()
-          }
-        }
-      }
-
       val FTH = defaultFth
-      val estF = if (succ > 0 && majorPath.size > 1) {
-        // Approximate: treat entanglement as if it traveled along the major path
-        topo.pathEndToEndFidelity(majorPath)
+      val deliveredFids: List<Double> = if (majorPath.size > 2) {
+        val afterFids = topo.getEstablishedEntanglementFidelities(src, dst)
+        newFidelitiesOnly(oldFids, afterFids)
       } else {
-        0.0
+        // 1-hop: fidelity is per delivered direct link
+        val SDlinks = src.links
+          .filter { link ->
+            link.entangled &&
+            !link.swappedAt(src) &&
+            link.contains(dst) &&
+            !link.utilized
+          }
+          .sortedByDescending { it.fidelity } // optional: take best direct pairs
+        if (SDlinks.isNotEmpty()) {
+          val succDirect = SDlinks.size.coerceAtMost(width)
+          val used = SDlinks.take(succDirect)
+          used.forEach { it.utilize() }
+          used.map { it.fidelity }
+        } else emptyList()
       }
 
-      val qualifiedSucc = if (succ > 0 && estF + 1e-12 >= FTH) succ else 0
+      val succ = deliveredFids.size
+      val estF = if (deliveredFids.isNotEmpty()) deliveredFids.average() else 0.0
+      val qualifiedSucc = deliveredFids.count { it + 1e-12 >= FTH }
 
       logWriter.appendln(""" ${majorPath.map { it.id }}, $width $succ $estF $qualifiedSucc""")
       pathToRecoveryPaths[pathWithWidth].forEach {

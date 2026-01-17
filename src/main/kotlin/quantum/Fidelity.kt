@@ -15,7 +15,7 @@ object Fidelity {
     fun freshLinkFidelity(tau: Double): Double {
         val base = 0.25
         val default_tau = 7.0
-        return (base + (1.0 - base) * kotlin.math.exp(-1.0 / default_tau)).coerceIn(base, 1.0)
+        return (base + (1.0 - base) * kotlin.math.exp(-1.0 / tau)).coerceIn(base, 1.0)
     }
 
     // Keep for reference/tests only; you’re not using time decay > 0.

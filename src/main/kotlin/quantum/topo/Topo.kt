@@ -270,6 +270,62 @@ ${links.groupBy { it.n1 to it.n2 }.map { "${it.key.n1.id} ${it.key.n2.id} ${it.v
     return result
   }
 
+  /**
+   * Return the actual end-to-end fidelities of all currently established entanglements between n1 and n2.
+   *
+   * This follows the internalLinks swap chain to identify the exact physical links used,
+   * then composes fidelities under the Werner model (w_out = Π w_i).
+   *
+   * This is the correct primitive for:
+   *   qualified ebits = delivered pairs whose actual end-to-end fidelity ≥ F_TH
+   */
+  fun getEstablishedEntanglementFidelities(n1: Node, n2: Node): MutableList<Double> {
+    val stack = Stack<Pair<Link?, Node>>()
+    stack.push(null to n1)
+
+    val result = mutableListOf<Double>()
+
+    while (stack.isNotEmpty()) {
+      val (incoming, current) = stack.pop()
+
+      if (current == n2) {
+        // Reconstruct the *actual* link chain used by this established entanglement.
+        var inc = incoming!!
+        val links = mutableListOf<Link>()
+        links.add(inc)
+
+        val pathNodes = mutableListOf<Node>(n2)
+        while (inc.n1 != n1 && inc.n2 != n1) {
+          val prev = if (inc.n1 == pathNodes.last()) inc.n2 else inc.n1
+          inc = prev.internalLinks.first { it.contains(inc) }.otherThan(inc)
+          links.add(inc)
+          pathNodes.add(prev)
+        }
+        pathNodes.add(n1)
+
+        // Compose Werner parameters along the actual physical links.
+        var wProd = 1.0
+        for (l in links) {
+          wProd *= Fidelity.wFromF(l.fidelity)
+        }
+        result.add(Fidelity.fFromW(wProd))
+        continue
+      }
+
+      val outgoingLinks = if (incoming == null) {
+        current.links.filter { it.entangled && !it.swappedAt(current) }
+      } else {
+        current.internalLinks.filter { it.contains(incoming) }.map { it.otherThan(incoming) }
+      }
+
+      for (l in outgoingLinks) {
+        stack.push(l to Pair(l.n1, l.n2).otherThan(current))
+      }
+    }
+
+    return result
+  }
+
   // Estimate end-to-end fidelity along a given entangled path.
   fun pathEndToEndFidelity(path: Path): Double {
     if (path.size < 2) return 0.0

@@ -147,10 +147,30 @@ class Q_GUARD_v2(
     }
 
     override fun P4() {
+        fun newFidelitiesOnly(oldF: List<Double>, newF: List<Double>, scale: Double = 1e12): MutableList<Double> {
+        val counts = HashMap<Long, Int>()
+        fun key(x: Double): Long = Math.round(x * scale)
+
+        oldF.forEach { f ->
+            val k = key(f)
+            counts[k] = (counts[k] ?: 0) + 1
+        }
+
+        val out = mutableListOf<Double>()
+        newF.forEach { f ->
+            val k = key(f)
+            val c = counts[k] ?: 0
+            if (c > 0) counts[k] = c - 1 else out.add(f)
+        }
+        return out
+        }
         majorPaths.forEach { pathWithWidth ->
             var lastSuccessfulPathForLog: List<Node>? = null
 
             val (_, width, majorPath) = pathWithWidth
+            val src = majorPath.first()
+            val dst = majorPath.last()
+            val oldFids = topo.getEstablishedEntanglementFidelities(src, dst)
 
             val predF = topo.predictedEndToEndFidelity(majorPath)
             val hops = majorPath.size - 1
@@ -583,59 +603,33 @@ class Q_GUARD_v2(
                     }
             }
 
-            // === Same success / fidelity logic, now using lastSuccessfulPathForLog ===
-            var succ = 0
-            var qualifiedSuccDirect = 0
-            var estFDirect = 0.0
-
-            if (majorPath.size > 2) {
-                succ = topo.getEstablishedEntanglements(
-                    majorPath.first(),
-                    majorPath.last()
-                ).size - oldNumOfPairs
+            val FTH = defaultFth
+            val deliveredFids: List<Double> = if (majorPath.size > 2) {
+            val afterFids = topo.getEstablishedEntanglementFidelities(src, dst)
+            newFidelitiesOnly(oldFids, afterFids)
             } else {
-                val u = majorPath.first()
-                val v = majorPath.last()
-
-                // Pick the best available direct links FIRST (before utilization)
-                val SDlinks = u.links
-                    .filter { link ->
-                        link.entangled &&
-                        !link.swappedAt(u) &&
-                        link.contains(v) &&
-                        !link.utilized
-                    }
-                    .sortedByDescending { it.fidelity }  // <-- important improvement
-
-                if (SDlinks.isNotEmpty()) {
-                    succ = SDlinks.size.coerceAtMost(width)
-                    val used = SDlinks.take(succ)
-
-                    // These are the delivered direct pairs; measure them directly.
-                    estFDirect = used.maxOf { it.fidelity }
-                    qualifiedSuccDirect = used.count { it.fidelity + 1e-12 >= FTH }
-
-                    used.forEach { it.utilize() }
+            // 1-hop: fidelity is per delivered direct link
+            val SDlinks = src.links
+                .filter { link ->
+                link.entangled &&
+                !link.swappedAt(src) &&
+                link.contains(dst) &&
+                !link.utilized
                 }
+                .sortedByDescending { it.fidelity } // optional: take best direct pairs
+            if (SDlinks.isNotEmpty()) {
+                val succDirect = SDlinks.size.coerceAtMost(width)
+                val used = SDlinks.take(succDirect)
+                used.forEach { it.utilize() }
+                used.map { it.fidelity }
+            } else emptyList()
             }
 
-            val estF = when {
-                succ <= 0 -> 0.0
-                majorPath.size == 2 -> estFDirect
-                lastSuccessfulPathForLog != null && lastSuccessfulPathForLog!!.size > 1 ->
-                    topo.pathEndToEndFidelity(lastSuccessfulPathForLog!!)
-                else -> 0.0
-            }
+            val succ = deliveredFids.size
+            val estF = if (deliveredFids.isNotEmpty()) deliveredFids.average() else 0.0
+            val qualifiedSucc = deliveredFids.count { it + 1e-12 >= FTH }
 
-            val qualifiedSucc = when {
-                succ <= 0 -> 0
-                majorPath.size == 2 -> qualifiedSuccDirect
-                else -> if (estF + 1e-12 >= FTH) succ else 0
-            }
-
-            logWriter.appendln(
-                """ ${majorPath.map { node -> node.id }}, $width $succ $estF $qualifiedSucc"""
-            )
+            logWriter.appendln(""" ${majorPath.map { it.id }}, $width $succ $estF $qualifiedSucc""")
 
             val avgF = estF
             val succAboveFth = qualifiedSucc

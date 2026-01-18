@@ -86,7 +86,10 @@ fun sim() {
           OnlineAlgorithm(Topo(topo), allowRecoveryPaths = true).apply {
             setDefaultThreshold(FTH)
           },
-          QcastPur(Topo(topo), allowRecoveryPaths = true).apply {
+          Q_CAST_BUGFIX(Topo(topo), allowRecoveryPaths = true).apply {
+            setDefaultThreshold(FTH)
+          },
+          Q_CAST_PUR(Topo(topo), allowRecoveryPaths = true).apply {
             setDefaultThreshold(FTH)
           },
           // Your fidelity-guaranteed online algorithm (internal F_TH = 0.7)
@@ -187,7 +190,10 @@ fun simpleTest() {
       OnlineAlgorithm(Topo(topo), allowRecoveryPaths = true).apply {
           setDefaultThreshold(FTH)
       },
-      QcastPur(Topo(topo), allowRecoveryPaths = true).apply {
+      Q_CAST_BUGFIX(Topo(topo), allowRecoveryPaths = true).apply {
+          setDefaultThreshold(FTH)
+      },
+      Q_CAST_PUR(Topo(topo), allowRecoveryPaths = true).apply {
           setDefaultThreshold(FTH)
       },
       // FidelityGuaranteedOnlineAlgorithm(Topo(topo), allowRecoveryPaths = true).apply {

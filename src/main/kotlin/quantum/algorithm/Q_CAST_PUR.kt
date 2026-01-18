@@ -12,7 +12,7 @@ import quantum.PurificationCostTable
 import quantum.Fidelity
 import quantum.randGen
 
-open class QcastPur(topo: Topo, val allowRecoveryPaths: Boolean = true) : Algorithm(topo) {
+open class Q_CAST_PUR(topo: Topo, val allowRecoveryPaths: Boolean = true) : Algorithm(topo) {
   override val name: String = "Q-CAST-PUR"
 
   protected var defaultFth: Double = 0.7
@@ -29,12 +29,14 @@ open class QcastPur(topo: Topo, val allowRecoveryPaths: Boolean = true) : Algori
   
   val majorPaths = mutableListOf<PickedPath>()
   val recoveryPaths = HashMap<PickedPath, LinkedList<PickedPath>>()
+  private val reservedBundles = HashMap<PickedPath, MutableList<LinkBundle>>()
   
   override fun P2() {
     require({ topo.isClean() })
     majorPaths.clear()
     recoveryPaths.clear()
     pathToRecoveryPaths.clear()
+    reservedBundles.clear()
     
     while (true) {
       val candidates = calCandidates(srcDstPairs)
@@ -90,6 +92,7 @@ open class QcastPur(topo: Topo, val allowRecoveryPaths: Boolean = true) : Algori
         it.tryEntanglement() // just for display
       }
     }
+    reservedBundles[pick] = toAdd.first
   }
   
   fun calCandidates(ops: List<Pair<Node, Node>>): List<PickedPath> {
@@ -170,36 +173,6 @@ open class QcastPur(topo: Topo, val allowRecoveryPaths: Boolean = true) : Algori
   data class RecoveryPath(val path: Path, val width: Int, var taken: Int = 0, var available: Int = 0)
   
   val pathToRecoveryPaths = ReducibleLazyEvaluation<PickedPath, MutableList<RecoveryPath>>({ mutableListOf() })
-
-  private fun runE2EPurification(src: Node, dst: Node) {
-    val FTH = defaultFth
-
-    while (true) {
-        val pool = topo.linksBetween(src, dst)
-            .filter { it.entangled && it.notSwapped() && !it.utilized }
-
-        if (pool.size < 2) break
-
-        val bestLink: Link? = pool.maxBy { link -> link.fidelity }
-        val bestF = bestLink?.fidelity ?: 0.0
-
-        // If the best link already meets the threshold, no need to purify further
-        if (bestF + 1e-12 >= FTH) break
-
-        // Try a purification step targeting FTH.
-        // This consumes two SD links between src and dst and (hopefully) creates a better one.
-        val result = tryPurifyOnEdge(
-            topo,
-            src, dst,
-            FTH,
-            PUR_DETERMINISTIC,
-            C_PUR
-        )
-
-        // If nothing was done (e.g., not enough links, or model says no improvement), stop.
-        if (result.costUnits == 0) break
-    }
-  }
   
   open override fun P4() {
     fun newFidelitiesOnly(oldF: List<Double>, newF: List<Double>, scale: Double = 1e12): MutableList<Double> {
@@ -264,9 +237,15 @@ open class QcastPur(topo: Topo, val allowRecoveryPaths: Boolean = true) : Algori
       
       for (i in (1..width)) {   // for w-width major path, treat it as w different paths, and repair separately
         // find all broken edges on the major path
+        val majorBundles = reservedBundles[pathWithWidth] ?: error("Missing reserved bundles for major path")
+
         val brokenEdges = LinkedList(edges.filter { (i1, i2) ->
-          val (n1, n2) = majorPath[i1] to majorPath[i2]
-          n1.links.any { it.contains(n2) && it.assigned && it.notSwapped() && !it.entangled }
+          // edge position along the major path equals i1 (since edges are (0,1),(1,2),...)
+          val bundle = majorBundles[i1]
+          val linkForStream = bundle[i - 1]  // stream i uses the i-th reserved link on every hop
+
+          // broken for this stream iff its reserved link didn't entangle or was already consumed
+          !(linkForStream.entangled && linkForStream.notSwapped() && !linkForStream.utilized)
         })
         
         val edgeToRps = brokenEdges.map { it to mutableListOf<Path>() }.toMap()
@@ -348,10 +327,6 @@ open class QcastPur(topo: Topo, val allowRecoveryPaths: Boolean = true) : Algori
           
           prevLinks.zip(nextLinks).forEach { (l1, l2) ->
             n.attemptSwapping(l1, l2)
-            l1.utilize()
-            if (next == p.last()) {
-              l2.utilize()
-            }
           }
         }
       }
@@ -380,9 +355,13 @@ open class QcastPur(topo: Topo, val allowRecoveryPaths: Boolean = true) : Algori
         } else emptyList()
       }
 
-      val succ = deliveredFids.size
-      val estF = if (deliveredFids.isNotEmpty()) deliveredFids.average() else 0.0
-      val qualifiedSucc = deliveredFids.count { it + 1e-12 >= FTH }
+      // Naive end-to-end purification: operate on the delivered end-to-end pool
+      val purifiedPool = purifyEndToEndPool(deliveredFids, FTH)
+
+      // Report post-purification outcomes (this is what the application “gets”)
+      val succ = purifiedPool.size
+      val estF = if (purifiedPool.isNotEmpty()) purifiedPool.average() else 0.0
+      val qualifiedSucc = purifiedPool.count { it + 1e-12 >= FTH }
 
       logWriter.appendln(""" ${majorPath.map { it.id }}, $width $succ $estF $qualifiedSucc""")
       pathToRecoveryPaths[pathWithWidth].forEach {

@@ -8,8 +8,8 @@ import utils.require
 import java.util.*
 import kotlin.collections.HashMap
 
-open class OnlineAlgorithm(topo: Topo, val allowRecoveryPaths: Boolean = true) : Algorithm(topo) {
-  override val name: String = "Online" + if (allowRecoveryPaths) "" else "-R"
+open class Q_CAST_BUGFIX(topo: Topo, val allowRecoveryPaths: Boolean = true) : Algorithm(topo) {
+  override val name: String = "Q-CAST-BUGFIX"
 
   protected var defaultFth: Double = 0.7
 
@@ -22,12 +22,14 @@ open class OnlineAlgorithm(topo: Topo, val allowRecoveryPaths: Boolean = true) :
   
   val majorPaths = mutableListOf<PickedPath>()
   val recoveryPaths = HashMap<PickedPath, LinkedList<PickedPath>>()
+  private val reservedBundles = HashMap<PickedPath, MutableList<LinkBundle>>()
   
   override fun P2() {
     require({ topo.isClean() })
     majorPaths.clear()
     recoveryPaths.clear()
     pathToRecoveryPaths.clear()
+    reservedBundles.clear()
     
     while (true) {
       val candidates = calCandidates(srcDstPairs)
@@ -83,6 +85,7 @@ open class OnlineAlgorithm(topo: Topo, val allowRecoveryPaths: Boolean = true) :
         it.tryEntanglement() // just for display
       }
     }
+    reservedBundles[pick] = toAdd.first
   }
   
   fun calCandidates(ops: List<Pair<Node, Node>>): List<PickedPath> {
@@ -202,9 +205,15 @@ open class OnlineAlgorithm(topo: Topo, val allowRecoveryPaths: Boolean = true) :
       
       for (i in (1..width)) {   // for w-width major path, treat it as w different paths, and repair separately
         // find all broken edges on the major path
+        val majorBundles = reservedBundles[pathWithWidth] ?: error("Missing reserved bundles for major path")
+
         val brokenEdges = LinkedList(edges.filter { (i1, i2) ->
-          val (n1, n2) = majorPath[i1] to majorPath[i2]
-          n1.links.any { it.contains(n2) && it.assigned && it.notSwapped() && !it.entangled }
+          // edge position along the major path equals i1 (since edges are (0,1),(1,2),...)
+          val bundle = majorBundles[i1]
+          val linkForStream = bundle[i - 1]  // stream i uses the i-th reserved link on every hop
+
+          // broken for this stream iff its reserved link didn't entangle or was already consumed
+          !(linkForStream.entangled && linkForStream.notSwapped() && !linkForStream.utilized)
         })
         
         val edgeToRps = brokenEdges.map { it to mutableListOf<Path>() }.toMap()

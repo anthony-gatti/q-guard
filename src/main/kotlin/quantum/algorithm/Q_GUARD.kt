@@ -572,10 +572,6 @@ class Q_GUARD(
 
                         prevLinks.zip(nextLinks).forEach { (l1, l2) ->
                             n.attemptSwapping(l1, l2)
-                            l1.utilize()
-                            if (next == chosenPath.last()) {
-                                l2.utilize()
-                            }
                         }
                     }
             }

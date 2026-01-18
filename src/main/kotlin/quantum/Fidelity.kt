@@ -14,7 +14,6 @@ object Fidelity {
     // F(0) = 1/4 + (3/4) * exp(-1 / tau)
     fun freshLinkFidelity(tau: Double): Double {
         val base = 0.25
-        val default_tau = 7.0
         return (base + (1.0 - base) * kotlin.math.exp(-1.0 / tau)).coerceIn(base, 1.0)
     }
 

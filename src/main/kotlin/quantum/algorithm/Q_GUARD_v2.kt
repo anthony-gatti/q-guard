@@ -177,11 +177,13 @@ class Q_GUARD_v2(
             val FTH = fthFor(majorPath.first(), majorPath.last())
 
             val hopInfoMajor = topo.perHopFreshF(majorPath)
-            val hopF0s = hopInfoMajor.map { triple -> triple.third }
+            val hopsMajor = majorPath.dropLast(1).zip(majorPath.drop(1))
 
-            // Distance/quality-weighted per-hop targets for the *major path*
-            val hopTargetsMajor: List<Double> =
-                Fidelity.perHopWeightedTargetsF(FTH, hopF0s)
+            val hopLengths = hopsMajor.map { (u, v) ->
+                topo.linksBetween(u, v).firstOrNull()?.l ?: Double.POSITIVE_INFINITY
+            }
+
+            val hopTargetsMajor = Fidelity.perHopWeightedTargetsF(FTH, hopLengths)
 
             // For convenience (logging / defaults), keep an average target
             val perHopTargetMajor: Double =
@@ -603,7 +605,6 @@ class Q_GUARD_v2(
                     }
             }
 
-            val FTH = defaultFth
             val deliveredFids: List<Double> = if (majorPath.size > 2) {
             val afterFids = topo.getEstablishedEntanglementFidelities(src, dst)
             newFidelitiesOnly(oldFids, afterFids)

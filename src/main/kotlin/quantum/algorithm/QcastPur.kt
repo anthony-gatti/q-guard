@@ -357,9 +357,6 @@ open class QcastPur(topo: Topo, val allowRecoveryPaths: Boolean = true) : Algori
       }
       
       // === Same succ logic as vanilla Q-CAST ===
-      val src = majorPath.first()
-      val dst = majorPath.last()
-
       val FTH = defaultFth
 
       val deliveredFids: List<Double> = if (majorPath.size > 2) {

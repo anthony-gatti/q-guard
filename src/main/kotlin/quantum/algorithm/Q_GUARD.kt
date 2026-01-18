@@ -580,8 +580,6 @@ class Q_GUARD(
                     }
             }
 
-            val FTH = defaultFth
-
             val deliveredFids: List<Double> = if (majorPath.size > 2) {
             val afterFids = topo.getEstablishedEntanglementFidelities(src, dst)
             newFidelitiesOnly(oldFids, afterFids)

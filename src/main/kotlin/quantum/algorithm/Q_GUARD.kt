@@ -7,7 +7,7 @@ import quantum.tryPurifyOnEdge
 import utils.ReducibleLazyEvaluation
 import utils.format
 
-class Q_GUARD(
+open class Q_GUARD(
     topo: Topo,
     allowRecoveryPaths: Boolean = true
 ) : OnlineAlgorithm(topo, allowRecoveryPaths) {
@@ -28,7 +28,7 @@ class Q_GUARD(
         reqFth[key] = fth
     }
 
-    private fun fthFor(src: Node, dst: Node): Double {
+    protected fun fthFor(src: Node, dst: Node): Double {
         val key = if (src.id <= dst.id) src.id to dst.id else dst.id to src.id
         return reqFth[key] ?: defaultFth
     }

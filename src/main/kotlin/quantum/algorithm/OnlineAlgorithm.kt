@@ -22,8 +22,12 @@ open class OnlineAlgorithm(topo: Topo, val allowRecoveryPaths: Boolean = true) :
   
   val majorPaths = mutableListOf<PickedPath>()
   val recoveryPaths = HashMap<PickedPath, LinkedList<PickedPath>>()
+
+  protected open fun scoreCandidate(path: Path, width: Int, oldP: DoubleArray): Double {
+    return topo.e(path, width, oldP)
+  }
   
-  override fun P2() {
+  open override fun P2() {
     require({ topo.isClean() })
     majorPaths.clear()
     recoveryPaths.clear()
@@ -142,7 +146,7 @@ open class OnlineAlgorithm(topo: Topo, val allowRecoveryPaths: Boolean = true) :
           
           neighborsOf[u].forEach { neighbor ->
             val tmp = E[u.id].second.clone()
-            val e = topo.e(getPathFromSrc(u) + neighbor, w, tmp)
+            val e = scoreCandidate(getPathFromSrc(u) + neighbor, w, tmp)
             val newE = e to tmp
             val oldE = E[neighbor.id]
             

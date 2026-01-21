@@ -7,7 +7,6 @@ import utils.pmap
 import utils.require
 import java.util.*
 import kotlin.collections.HashMap
-import quantum.tryPurifyOnEdge
 import quantum.PurificationCostTable
 import quantum.Fidelity
 import quantum.randGen
@@ -16,9 +15,6 @@ open class Q_CAST_PUR(topo: Topo, val allowRecoveryPaths: Boolean = true) : Algo
   override val name: String = "Q-CAST-PUR"
 
   protected var defaultFth: Double = 0.7
-
-  private val PUR_DETERMINISTIC = false
-  private val C_PUR = 1  // cost units per purification attempt
 
   fun setDefaultThreshold(fth: Double) {
     defaultFth = fth

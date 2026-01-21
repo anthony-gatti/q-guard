@@ -43,6 +43,7 @@ open class Q_GUARD(
         val feasible: Boolean,
     )
 
+    // computes exg for a given path
     private fun computeExgForPath(
         path: List<Node>,
         width: Int,
@@ -136,6 +137,7 @@ open class Q_GUARD(
         )
     }
 
+    // computes a uniform per-hop fidelity target for each detour of each recovery path
     private fun computeDetourPerHopTargets(
         recoveryPaths: List<PickedPath>,
         rpToSegmentRange: Map<Path, Pair<Int, Int>>,
@@ -159,6 +161,7 @@ open class Q_GUARD(
         return detourPerHopTarget
     }
 
+    // returns fidelities that are in newF but not oldF
     private fun newFidelitiesOnly(
         oldF: List<Double>,
         newF: List<Double>,
@@ -181,6 +184,7 @@ open class Q_GUARD(
         return out
     }
 
+    // Build per-edge purification targets for a given path
     private fun buildChosenPerEdgeTargets(
         chosenPath: List<Node>,
         pickedRps: Set<Path>,
@@ -205,6 +209,8 @@ open class Q_GUARD(
         return targets
     }
 
+    // Purification along chosen path
+    // keep purifying until fewer than 2 entg pairs remain, or best available pair meets target fid
     private fun maybePurifyAlongPath(
         chosenPath: List<Node>,
         chosenPerEdgeTarget: Map<Pair<Int, Int>, Double>,
@@ -230,6 +236,7 @@ open class Q_GUARD(
         }
     }
 
+    // ensure all hops on chosen path have at least one pair that meets target
     private fun allHopsMeetTargets(
         chosenPath: List<Node>,
         chosenPerEdgeTarget: Map<Pair<Int, Int>, Double>,

@@ -39,14 +39,14 @@ class Plot {
     )
   }
   
-  val nameMapping = mapOf("SL" to "SLMP", "Online" to "Q-CAST", "Online-R" to "Q-CAST\\\\R", "CR" to "Q-PASS", "CR-R" to "Q-PASS\\\\R", "Greedy_H" to "Greedy", "QG" to "Q-GUARD", "QG-v2" to "Q-GUARD-v2", "Q-CAST-PUR" to "Q-CAST-PUR", "Q-CAST-BUGFIX" to "Q-CAST-BUGFIX")
+  val nameMapping = mapOf("SL" to "SLMP", "Online" to "Q-CAST", "Online-R" to "Q-CAST\\\\R", "CR" to "Q-PASS", "CR-R" to "Q-PASS\\\\R", "Greedy_H" to "Greedy", "QG" to "Q-GUARD", "QG-v2" to "Q-GUARD-v2", "Q-CAST-PUR" to "Q-CAST-PUR")
   // val names = listOf("Online", "SL", "Greedy_H", "CR")
-  val names = listOf("Online", "QG", "QG-v2", "Q-CAST-PUR", "Q-CAST-BUGFIX")
+  val names = listOf("Online", "QG", "QG-v2", "Q-CAST-PUR")
   
   fun throughputCdf() {
-    val nameMapping = mapOf("SL" to "SLMP", "Online" to "Q-CAST", "Greedy_H" to "Greedy", "QG" to "Q-GUARD", "QG-v2" to "Q-GUARD-v2", "Q-CAST-PUR" to "Q-CAST-PUR", "Q-CAST-BUGFIX" to "Q-CAST-BUGFIX")
+    val nameMapping = mapOf("SL" to "SLMP", "Online" to "Q-CAST", "Greedy_H" to "Greedy", "QG" to "Q-GUARD", "QG-v2" to "Q-GUARD-v2", "Q-CAST-PUR" to "Q-CAST-PUR")
     // val names = listOf("Online", "SL", "Greedy_H", "CR", "BotCap", "SumDist", "MultiMetric")
-    val names = listOf("Online", "QG", "QG-v2", "Q-CAST-PUR", "Q-CAST-BUGFIX")
+    val names = listOf("Online", "QG", "QG-v2", "Q-CAST-PUR")
     
     (1..3).forEach { mode ->
       var (d, n, p, q, k, nsd) = referenceSetting

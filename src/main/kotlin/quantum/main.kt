@@ -86,9 +86,6 @@ fun sim() {
           OnlineAlgorithm(Topo(topo), allowRecoveryPaths = true).apply {
             setDefaultThreshold(FTH)
           },
-          Q_CAST_BUGFIX(Topo(topo), allowRecoveryPaths = true).apply {
-            setDefaultThreshold(FTH)
-          },
           Q_CAST_PUR(Topo(topo), allowRecoveryPaths = true).apply {
             setDefaultThreshold(FTH)
           },
@@ -188,9 +185,6 @@ fun simpleTest() {
     
     val algorithms = listOf(
       OnlineAlgorithm(Topo(topo), allowRecoveryPaths = true).apply {
-          setDefaultThreshold(FTH)
-      },
-      Q_CAST_BUGFIX(Topo(topo), allowRecoveryPaths = true).apply {
           setDefaultThreshold(FTH)
       },
       Q_CAST_PUR(Topo(topo), allowRecoveryPaths = true).apply {

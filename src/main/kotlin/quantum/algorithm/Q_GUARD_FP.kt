@@ -12,42 +12,25 @@ import java.util.PriorityQueue
 import kotlin.collections.HashMap
 import kotlin.math.pow
 
-/**
- * Q_GUARD_v2 (renamed by you) is now the "PredEXG / Phase-2 fidelity-aware" variant:
- * - Phase 2 uses EXT(path,w) * predictedPurificationYield(path,w,Fth) for major path selection.
- * - Recovery paths are generated with a *segment budget* derived from the major path's threshold.
- * - Phase 4 execution stays exactly as Q_GUARD (we inherit it unchanged).
- *
- * This replaces the old "weighted targets" v2; targets are equal-split by hop count.
- */
-class Q_GUARD_v2(
+// Same P4 as Q-GUARD, but uses EXG for major path selection
+class Q_GUARD_FP(
     topo: Topo,
     allowRecoveryPaths: Boolean = true
 ) : Q_GUARD(topo, allowRecoveryPaths) {
 
-    override val name: String = "QG-v2"   // change label if you want
+    override val name: String = "QG-FP"
 
-    /**
-     * Phase-2 scoring hook used inside calCandidates():
-     * Option A: EXT already accounts for link success, so yield only reflects purification overhead.
-     */
+    // hook used to score candidates
     override fun scoreCandidate(path: Path, width: Int, oldP: DoubleArray): Double {
         val base = topo.e(path, width, oldP)
         if (base <= 0.0) return 0.0
 
-        // Major candidates: endpoints correspond to the actual request (src,dst).
         val fth = fthFor(path.first(), path.last())
         val y = predictedYieldEqualSplit(path, width, fth)
         return if (y > 0.0) base * y else 0.0
     }
 
-    /**
-     * IMPORTANT:
-     * OnlineAlgorithm.P2() calls OnlineAlgorithm.P2Extra() (which is NOT open),
-     * and P2Extra would score recovery paths using fthFor(switch_i, switch_j) incorrectly.
-     *
-     * So we override P2() and call our own recovery generator that uses segment budgets.
-     */
+    // Replaces q-cast P2 with EXG path selection
     override fun P2() {
         require({ topo.isClean() })
         majorPaths.clear()
@@ -55,7 +38,7 @@ class Q_GUARD_v2(
         pathToRecoveryPaths.clear()
 
         while (true) {
-            val candidates = calCandidates(srcDstPairs)   // uses overridden scoreCandidate()
+            val candidates = generateMajors(srcDstPairs) // uses overridden scoreCandidate()
             val pick = candidates.maxBy { it.first }
             if (pick != null && pick.first > 0.0) {
                 pickAndAssignPath(pick)
@@ -65,15 +48,12 @@ class Q_GUARD_v2(
         }
 
         if (allowRecoveryPaths) {
-            P2ExtraPredBudget()
+            recoveryPredBudget()
         }
     }
 
-    /**
-     * Recovery-path generation, structurally identical to OnlineAlgorithm.P2Extra(),
-     * except scoring uses a segment fidelity budget derived from the major path's threshold.
-     */
-    private fun P2ExtraPredBudget() {
+    // recovery path generation, same as q-cast but uses segment fidelity budget
+    private fun recoveryPredBudget() {
         majorPaths.forEach { majorPicked ->
             val (_, _, majorPath) = majorPicked
             val majorSrc = majorPath.first()
@@ -93,7 +73,7 @@ class Q_GUARD_v2(
                     // Segment Werner budget: w_seg = w_th^(l / Hmajor)
                     val wSeg = wTh.pow(l.toDouble() / Hmajor.toDouble())
 
-                    val pick = calCandidateWithWernerBudget(segSrc, segDst, wSeg)
+                    val pick = generateMajorWithBudget(segSrc, segDst, wSeg)
                     if (pick != null && pick.first > 0.0) {
                         pickAndAssignPath(pick, majorPicked)
                     }
@@ -102,11 +82,8 @@ class Q_GUARD_v2(
         }
     }
 
-    /**
-     * Like OnlineAlgorithm.calCandidates() but for ONE (src,dst) pair with a fixed Werner budget.
-     * Scoring: EXT(path,w) * predictedYieldForWernerBudget(path,w,wBudget)
-     */
-    private fun calCandidateWithWernerBudget(src: Node, dst: Node, wBudget: Double): PickedPath? {
+    // finds maj paths for one s-d pair with fixed werner budget
+    private fun generateMajorWithBudget(src: Node, dst: Node, wBudget: Double): PickedPath? {
         val maxM = minOf(src.remainingQubits, dst.remainingQubits)
         if (maxM == 0) return null
 
@@ -165,7 +142,7 @@ class Q_GUARD_v2(
 
                     val path = getPathFromSrc(u) + neighbor
                     val base = topo.e(path, w, tmp)
-                    val y = predictedYieldForWernerBudget(path, w, wBudget)
+                    val y = predictedYieldForBudget(path, w, wBudget)
                     val e = if (base > 0.0 && y > 0.0) base * y else 0.0
 
                     val newE = e to tmp
@@ -184,12 +161,9 @@ class Q_GUARD_v2(
         return candidate
     }
 
-    /**
-     * Predicted yield using equal-split per-hop target derived from end-to-end Fth.
-     * Yield is the bottleneck hop's 1 / 2^(roundsNeeded).
-     *
-     * Feasible only if 2^(roundsNeeded) <= width on every hop.
-     */
+    // Predicted yield using equal-split per-hop target derived from end-to-end Fth
+    // Yield is the bottleneck hop's 1 / 2^(roundsNeeded)
+    // Feasible only if 2^(roundsNeeded) <= width on every hop.
     private fun predictedYieldEqualSplit(path: Path, width: Int, fthEndToEnd: Double): Double {
         val hops = path.size - 1
         if (hops <= 0) return 0.0
@@ -215,13 +189,8 @@ class Q_GUARD_v2(
         return bottleneck
     }
 
-    /**
-     * Predicted yield for a recovery span when we want to preserve a fixed Werner budget wBudget
-     * (derived from the major segment's share of the end-to-end threshold).
-     *
-     * For a candidate span with h hops: w_target_per_hop = wBudget^(1/h).
-     */
-    private fun predictedYieldForWernerBudget(path: Path, width: Int, wBudget: Double): Double {
+    // Predicted yield for recovery path when it is necessary to preserve budget
+    private fun predictedYieldForBudget(path: Path, width: Int, wBudget: Double): Double {
         val hops = path.size - 1
         if (hops <= 0) return 0.0
         if (wBudget <= 0.0) return 0.0

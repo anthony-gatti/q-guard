@@ -92,7 +92,7 @@ fun sim() {
           // Your fidelity-guaranteed online algorithm (internal F_TH = 0.7)
           // FidelityGuaranteedOnlineAlgorithm(Topo(topo), allowRecoveryPaths = true),
           Q_GUARD(Topo(topo), allowRecoveryPaths = true), 
-          Q_GUARD_v2(Topo(topo), allowRecoveryPaths = true)        
+          Q_GUARD_FP(Topo(topo), allowRecoveryPaths = true)        
         )
 
         algorithms.filter { solver ->
@@ -196,7 +196,7 @@ fun simpleTest() {
       Q_GUARD(Topo(topo), allowRecoveryPaths = true).apply {
           setDefaultThreshold(FTH)
       },
-      Q_GUARD_v2(Topo(topo), allowRecoveryPaths = true).apply {
+      Q_GUARD_FP(Topo(topo), allowRecoveryPaths = true).apply {
           setDefaultThreshold(FTH)
       }
 //      , OnlineAlgorithmWithRecoveryPaths(Topo(topo))

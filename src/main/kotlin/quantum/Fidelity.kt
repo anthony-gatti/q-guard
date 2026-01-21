@@ -1,5 +1,7 @@
 package quantum
 
+import kotlin.math.*
+
 object Fidelity {
     fun wFromF(F: Double): Double = (4.0 * F - 1.0) / 3.0
     fun fFromW(w: Double): Double = (1.0 + 3.0 * w) / 4.0
@@ -17,10 +19,25 @@ object Fidelity {
         return (base + (1.0 - base) * kotlin.math.exp(-1.0 / tau)).coerceIn(base, 1.0)
     }
 
-    // Keep for reference/tests only; you’re not using time decay > 0.
-    fun memoryFidelity(t: Int, tau: Double, F0: Double = 1.0): Double {
+    // fresh link fidelity, but with minor variance
+    fun sampleFreshLinkFidelity(
+        tau: Double,
+    ): Double {
         val base = 0.25
-        return base + (F0 - base) * Math.exp(-(t + 1) / tau)
+        val stdAbs = 0.05
+        val mean = freshLinkFidelity(tau).coerceIn(base, 1.0)
+        val std = stdAbs
+        // val std = (mean * stdRel)
+
+        if (std <= 0.0) return mean
+
+        // Box–Muller N(0,1)
+        val u1 = quantum.randGen.nextDouble().coerceAtLeast(1e-12)
+        val u2 = quantum.randGen.nextDouble()
+        val z = sqrt(-2.0 * ln(u1)) * cos(2.0 * PI * u2)
+
+        val x = mean + std * z
+        return x.coerceIn(base, 1.0)
     }
 
     fun perHopTargetF(Fth: Double, hops: Int): Double {
@@ -60,13 +77,6 @@ object Fidelity {
         val Fp  = if (den > 0) (num / den).coerceIn(0.25, 1.0) else 0.25
         val ps  = den.coerceIn(0.0, 1.0)   // keep as a probability
         return Fp to ps
-    }
-
-    // Legacy (identical per-hop case) – not used by the gate anymore
-    fun endToEndF(baseF: Double, hops: Int): Double {
-        if (hops <= 0) return 0.0
-        val w = wFromF(baseF)
-        return fFromW(Math.pow(w, hops.toDouble()))
     }
 
     const val DEFAULT_TAU: Double = 7.0

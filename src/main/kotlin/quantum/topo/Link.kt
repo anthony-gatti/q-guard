@@ -62,7 +62,8 @@ class Link(val topo: Topo, val n1: Node, val n2: Node, val l: Double, var entang
     entangled = b
     fidelity = if (b) {
         // Freshly generated entanglement, age t = 0, using paper’s model
-        Fidelity.freshLinkFidelity(tau).coerceIn(0.25, 1.0)
+        //Fidelity.freshLinkFidelity(tau).coerceIn(0.25, 1.0)
+        Fidelity.sampleFreshLinkFidelity(tau)
     } else {
         0.0
     }

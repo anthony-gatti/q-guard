@@ -196,8 +196,7 @@ open class OnlineAlgorithm(topo: Topo, val allowRecoveryPaths: Boolean = true) :
       val src = majorPath.first()
       val dst = majorPath.last()
       val oldFids = topo.getEstablishedEntanglementFidelities(src, dst)
-      val oldNumOfPairs = topo.getEstablishedEntanglements(majorPath.first(), majorPath.last()).size  // just for logging
-      
+            
       val recoveryPaths = this.recoveryPaths.get(pathWithWidth)!!.sortedBy { it.third.size * 10000 + majorPath.indexOf(it.third.first()) }
       
       recoveryPaths.forEach { (_, w, p) ->
@@ -246,7 +245,7 @@ open class OnlineAlgorithm(topo: Topo, val allowRecoveryPaths: Boolean = true) :
             
             val otherCoveredEdges = rpToEdges[rp]!!.toHashSet() - brokenEdge
             
-            for (edge in otherCoveredEdges) { // delete covered rps, or abort
+            for (edge in otherCoveredEdges) { // delete covered rps
               val prevRp = edgeToRps[edge]!!.intersect(pickedRps).minusElement(rp).firstOrNull()  // the previous rp is covered
               
               if (prevRp == null) {

@@ -31,6 +31,7 @@ open class Q_CAST_PUR(topo: Topo, val allowRecoveryPaths: Boolean = true) : Algo
   val recoveryPaths = HashMap<PickedPath, LinkedList<PickedPath>>()
   private val reservedBundles = HashMap<PickedPath, MutableList<LinkBundle>>()
   
+  // Computes paths + reserves qubits
   override fun P2() {
     require({ topo.isClean() })
     majorPaths.clear()
@@ -39,10 +40,10 @@ open class Q_CAST_PUR(topo: Topo, val allowRecoveryPaths: Boolean = true) : Algo
     reservedBundles.clear()
     
     while (true) {
-      val candidates = calCandidates(srcDstPairs)
+      val candidates = generateMajors(srcDstPairs) // find candidate paths
       
       val pick = candidates.maxBy { it.first }
-      if (pick != null && pick.first > 0.0) {
+      if (pick != null && pick.first > 0.0) { // Choose highest EXT path
         pickAndAssignPath(pick)
       } else {
         break
@@ -50,17 +51,18 @@ open class Q_CAST_PUR(topo: Topo, val allowRecoveryPaths: Boolean = true) : Algo
     }
     
     if (allowRecoveryPaths)
-      P2Extra()
+      generateRecoveries()
   }
   
-  fun P2Extra() {
+  // Computes recovery paths
+  fun generateRecoveries() {
     majorPaths.forEach { majorPath ->
       val (_, _, p) = majorPath
       (1..topo.k).forEach { l ->
         (0..p.size - l - 1).forEach { i ->
           val (src, dst) = p[i] to p[i + l]
           
-          val candidates = calCandidates(listOf(Pair(src, dst)))
+          val candidates = generateMajors(listOf(Pair(src, dst)))
           val pick = candidates.maxBy { it.first }
           if (pick != null && pick.first > 0.0) {
             pickAndAssignPath(pick, majorPath)
@@ -70,8 +72,9 @@ open class Q_CAST_PUR(topo: Topo, val allowRecoveryPaths: Boolean = true) : Algo
     }
   }
   
-  // if majorPath is null: *pick* is a major path
-  // else: *pick* is a recovery path
+  // Reserves the resources for a chosen path
+  // if majorPath is null: pic is a major path
+  // else: pick is a recovery path
   fun pickAndAssignPath(pick: PickedPath, majorPath: PickedPath? = null) {
     if (majorPath != null)
       recoveryPaths[majorPath]!!.add(pick)
@@ -89,13 +92,13 @@ open class Q_CAST_PUR(topo: Topo, val allowRecoveryPaths: Boolean = true) : Algo
       toAdd.first.add(links)
       links.forEach {
         it.assignQubits()
-        it.tryEntanglement() // just for display
       }
     }
     reservedBundles[pick] = toAdd.first
   }
   
-  fun calCandidates(ops: List<Pair<Node, Node>>): List<PickedPath> {
+  // Computes candidate major paths
+  fun generateMajors(ops: List<Pair<Node, Node>>): List<PickedPath> {
     return ops.pmap fxx@{ (src, dst) ->
       val maxM = Math.min(src.remainingQubits, dst.remainingQubits)
       if (maxM == 0) return@fxx null
@@ -141,9 +144,9 @@ open class Q_CAST_PUR(topo: Topo, val allowRecoveryPaths: Boolean = true) : Algo
         q.offer(src to topo.sentinal)
         
         while (q.isNotEmpty()) {
-          val (u, prev) = q.poll()  // invariant: top of q reveals the node with highest e under m
-          if (u in prevFromSrc) continue  // skip same node suboptimal paths
-          prevFromSrc[u] = prev // record
+          val (u, prev) = q.poll()
+          if (u in prevFromSrc) continue
+          prevFromSrc[u] = prev 
           
           if (u == dst) {
             candidate = E[u.id].first to w also getPathFromSrc(dst)
@@ -174,6 +177,7 @@ open class Q_CAST_PUR(topo: Topo, val allowRecoveryPaths: Boolean = true) : Algo
   
   val pathToRecoveryPaths = ReducibleLazyEvaluation<PickedPath, MutableList<RecoveryPath>>({ mutableListOf() })
   
+  // Recovery + swapping + purification
   open override fun P4() {
     fun newFidelitiesOnly(oldF: List<Double>, newF: List<Double>, scale: Double = 1e12): MutableList<Double> {
       val counts = HashMap<Long, Int>()
@@ -193,7 +197,7 @@ open class Q_CAST_PUR(topo: Topo, val allowRecoveryPaths: Boolean = true) : Algo
       return out
     }
     /**
-     * Naive end-to-end purification baseline:
+     * end-to-end purification
      * repeatedly take the 2 worst (still-unqualified) pairs, BBPSSW-purify them, keep output on success.
      */
     fun purifyEndToEndPool(poolIn: List<Double>, fth: Double): List<Double> {
@@ -223,7 +227,6 @@ open class Q_CAST_PUR(topo: Topo, val allowRecoveryPaths: Boolean = true) : Algo
       val src = majorPath.first()
       val dst = majorPath.last()
       val oldFids = topo.getEstablishedEntanglementFidelities(src, dst)
-      val oldNumOfPairs = topo.getEstablishedEntanglements(majorPath.first(), majorPath.last()).size  // just for logging
       
       val recoveryPaths = this.recoveryPaths.get(pathWithWidth)!!.sortedBy { it.third.size * 10000 + majorPath.indexOf(it.third.first()) }
       
@@ -237,15 +240,9 @@ open class Q_CAST_PUR(topo: Topo, val allowRecoveryPaths: Boolean = true) : Algo
       
       for (i in (1..width)) {   // for w-width major path, treat it as w different paths, and repair separately
         // find all broken edges on the major path
-        val majorBundles = reservedBundles[pathWithWidth] ?: error("Missing reserved bundles for major path")
-
         val brokenEdges = LinkedList(edges.filter { (i1, i2) ->
-          // edge position along the major path equals i1 (since edges are (0,1),(1,2),...)
-          val bundle = majorBundles[i1]
-          val linkForStream = bundle[i - 1]  // stream i uses the i-th reserved link on every hop
-
-          // broken for this stream iff its reserved link didn't entangle or was already consumed
-          !(linkForStream.entangled && linkForStream.notSwapped() && !linkForStream.utilized)
+          val (n1, n2) = majorPath[i1] to majorPath[i2]
+          n1.links.any { it.contains(n2) && it.assigned && it.notSwapped() && !it.entangled }
         })
         
         val edgeToRps = brokenEdges.map { it to mutableListOf<Path>() }.toMap()
@@ -265,7 +262,7 @@ open class Q_CAST_PUR(topo: Topo, val allowRecoveryPaths: Boolean = true) : Algo
         
         // try to cover the broken edges
         for (brokenEdge in brokenEdges) {
-          if (realRepairedEdges.contains(brokenEdge)) continue  // repaired edges will never change this state, for low time complexity.
+          if (realRepairedEdges.contains(brokenEdge)) continue
           var repaired = false
           var next = 0
           
@@ -279,13 +276,13 @@ open class Q_CAST_PUR(topo: Topo, val allowRecoveryPaths: Boolean = true) : Algo
             
             val otherCoveredEdges = rpToEdges[rp]!!.toHashSet() - brokenEdge
             
-            for (edge in otherCoveredEdges) { // delete covered rps, or abort
+            for (edge in otherCoveredEdges) { // delete covered rps
               val prevRp = edgeToRps[edge]!!.intersect(pickedRps).minusElement(rp).firstOrNull()  // the previous rp is covered
               
               if (prevRp == null) {
                 repairedEdges.add(edge)
               } else {
-                continue@tryRp  // the rps overlap. taking time to search recursively. just abort
+                continue@tryRp
               }
             }
             
@@ -293,16 +290,16 @@ open class Q_CAST_PUR(topo: Topo, val allowRecoveryPaths: Boolean = true) : Algo
             repairedEdges.add(brokenEdge)
             pickedRps.add(rp)
             
-            (realPickedRps - pickedRps).forEach { rpToWidth[it] = rpToWidth[it]!! + 1 }   // release the previous rps
+            (realPickedRps - pickedRps).forEach { rpToWidth[it] = rpToWidth[it]!! + 1 }   // release previous rps
             (pickedRps - realPickedRps).forEach { rpToWidth[it] = rpToWidth[it]!! - 1 }
             
             realPickedRps = pickedRps
             realRepairedEdges = repairedEdges
-            break  // one rp is sufficient. after all, we cannot swap one link to two
+            break
           }
           
-          if (!repaired) {  // this major path cannot be repaired
-            break  //
+          if (!repaired) {  // major path cannot be repaired
+            break
           }
         }
         
@@ -331,14 +328,11 @@ open class Q_CAST_PUR(topo: Topo, val allowRecoveryPaths: Boolean = true) : Algo
         }
       }
       
-      // === Same succ logic as vanilla Q-CAST ===
       val FTH = defaultFth
-
       val deliveredFids: List<Double> = if (majorPath.size > 2) {
         val afterFids = topo.getEstablishedEntanglementFidelities(src, dst)
         newFidelitiesOnly(oldFids, afterFids)
       } else {
-        // 1-hop: fidelity is per delivered direct link
         val SDlinks = src.links
           .filter { link ->
             link.entangled &&
@@ -346,7 +340,7 @@ open class Q_CAST_PUR(topo: Topo, val allowRecoveryPaths: Boolean = true) : Algo
             link.contains(dst) &&
             !link.utilized
           }
-          .sortedByDescending { it.fidelity } // optional: take best direct pairs
+          .sortedByDescending { it.fidelity } // take best direct pairs
         if (SDlinks.isNotEmpty()) {
           val succDirect = SDlinks.size.coerceAtMost(width)
           val used = SDlinks.take(succDirect)
@@ -355,10 +349,10 @@ open class Q_CAST_PUR(topo: Topo, val allowRecoveryPaths: Boolean = true) : Algo
         } else emptyList()
       }
 
-      // Naive end-to-end purification: operate on the delivered end-to-end pool
+      // apply end-to-end purification - operate on the delivered end-to-end pool
       val purifiedPool = purifyEndToEndPool(deliveredFids, FTH)
 
-      // Report post-purification outcomes (this is what the application “gets”)
+      // post-purification outcomes
       val succ = purifiedPool.size
       val estF = if (purifiedPool.isNotEmpty()) purifiedPool.average() else 0.0
       val qualifiedSucc = purifiedPool.count { it + 1e-12 >= FTH }

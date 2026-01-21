@@ -27,6 +27,7 @@ open class OnlineAlgorithm(topo: Topo, val allowRecoveryPaths: Boolean = true) :
     return topo.e(path, width, oldP)
   }
   
+  // Computes paths + reserves qubits
   open override fun P2() {
     require({ topo.isClean() })
     majorPaths.clear()
@@ -34,10 +35,10 @@ open class OnlineAlgorithm(topo: Topo, val allowRecoveryPaths: Boolean = true) :
     pathToRecoveryPaths.clear()
     
     while (true) {
-      val candidates = calCandidates(srcDstPairs)
+      val candidates = generateMajors(srcDstPairs) // find candidate paths
       
       val pick = candidates.maxBy { it.first }
-      if (pick != null && pick.first > 0.0) {
+      if (pick != null && pick.first > 0.0) { // Choose highest EXT path
         pickAndAssignPath(pick)
       } else {
         break
@@ -45,17 +46,18 @@ open class OnlineAlgorithm(topo: Topo, val allowRecoveryPaths: Boolean = true) :
     }
     
     if (allowRecoveryPaths)
-      P2Extra()
+      generateRecoveries()
   }
   
-  fun P2Extra() {
+  // Computes recovery paths 
+  fun generateRecoveries() {
     majorPaths.forEach { majorPath ->
       val (_, _, p) = majorPath
       (1..topo.k).forEach { l ->
         (0..p.size - l - 1).forEach { i ->
           val (src, dst) = p[i] to p[i + l]
           
-          val candidates = calCandidates(listOf(Pair(src, dst)))
+          val candidates = generateMajors(listOf(Pair(src, dst)))
           val pick = candidates.maxBy { it.first }
           if (pick != null && pick.first > 0.0) {
             pickAndAssignPath(pick, majorPath)
@@ -65,8 +67,9 @@ open class OnlineAlgorithm(topo: Topo, val allowRecoveryPaths: Boolean = true) :
     }
   }
   
-  // if majorPath is null: *pick* is a major path
-  // else: *pick* is a recovery path
+  // Reserves the resources for a chosen path
+  // if majorPath is null: pic is a major path
+  // else: pick is a recovery path
   fun pickAndAssignPath(pick: PickedPath, majorPath: PickedPath? = null) {
     if (majorPath != null)
       recoveryPaths[majorPath]!!.add(pick)
@@ -84,12 +87,12 @@ open class OnlineAlgorithm(topo: Topo, val allowRecoveryPaths: Boolean = true) :
       toAdd.first.add(links)
       links.forEach {
         it.assignQubits()
-        it.tryEntanglement() // just for display
       }
     }
   }
   
-  fun calCandidates(ops: List<Pair<Node, Node>>): List<PickedPath> {
+  // Computes candidate major paths
+  fun generateMajors(ops: List<Pair<Node, Node>>): List<PickedPath> {
     return ops.pmap fxx@{ (src, dst) ->
       val maxM = Math.min(src.remainingQubits, dst.remainingQubits)
       if (maxM == 0) return@fxx null
@@ -135,9 +138,9 @@ open class OnlineAlgorithm(topo: Topo, val allowRecoveryPaths: Boolean = true) :
         q.offer(src to topo.sentinal)
         
         while (q.isNotEmpty()) {
-          val (u, prev) = q.poll()  // invariant: top of q reveals the node with highest e under m
-          if (u in prevFromSrc) continue  // skip same node suboptimal paths
-          prevFromSrc[u] = prev // record
+          val (u, prev) = q.poll()
+          if (u in prevFromSrc) continue 
+          prevFromSrc[u] = prev
           
           if (u == dst) {
             candidate = E[u.id].first to w also getPathFromSrc(dst)
@@ -168,6 +171,7 @@ open class OnlineAlgorithm(topo: Topo, val allowRecoveryPaths: Boolean = true) :
   
   val pathToRecoveryPaths = ReducibleLazyEvaluation<PickedPath, MutableList<RecoveryPath>>({ mutableListOf() })
   
+  // Recovery + swapping phase
   open override fun P4() {
     fun newFidelitiesOnly(oldF: List<Double>, newF: List<Double>, scale: Double = 1e12): MutableList<Double> {
       val counts = HashMap<Long, Int>()
@@ -204,7 +208,7 @@ open class OnlineAlgorithm(topo: Topo, val allowRecoveryPaths: Boolean = true) :
       val edges = (0..majorPath.size - 2).zip(1..majorPath.size - 1)
       val rpToWidth = recoveryPaths.map { it.third to it.second }.toMap().toMutableMap()
       
-      for (i in (1..width)) {   // for w-width major path, treat it as w different paths, and repair separately
+      for (i in (1..width)) { // for w-width major path, treat it as w different paths, and repair separately
         // find all broken edges on the major path
         val brokenEdges = LinkedList(edges.filter { (i1, i2) ->
           val (n1, n2) = majorPath[i1] to majorPath[i2]
@@ -214,7 +218,7 @@ open class OnlineAlgorithm(topo: Topo, val allowRecoveryPaths: Boolean = true) :
         val edgeToRps = brokenEdges.map { it to mutableListOf<Path>() }.toMap()
         val rpToEdges = recoveryPaths.map { it.third to mutableListOf<Pair<Int, Int>>() }.toMap()
         
-        recoveryPaths.forEach { (_, _, rp) ->  // rp is calculated from P2
+        recoveryPaths.forEach { (_, _, rp) ->  // rp calculated in P2
           val (s1, s2) = majorPath.indexOf(rp.first()) to majorPath.indexOf(rp.last())
           
           (s1..s2 - 1).zip(s1 + 1..s2).filter { it in brokenEdges }.forEach {
@@ -228,7 +232,7 @@ open class OnlineAlgorithm(topo: Topo, val allowRecoveryPaths: Boolean = true) :
         
         // try to cover the broken edges
         for (brokenEdge in brokenEdges) {
-          if (realRepairedEdges.contains(brokenEdge)) continue  // repaired edges will never change this state, for low time complexity.
+          if (realRepairedEdges.contains(brokenEdge)) continue
           var repaired = false
           var next = 0
           
@@ -248,7 +252,7 @@ open class OnlineAlgorithm(topo: Topo, val allowRecoveryPaths: Boolean = true) :
               if (prevRp == null) {
                 repairedEdges.add(edge)
               } else {
-                continue@tryRp  // the rps overlap. taking time to search recursively. just abort
+                continue@tryRp
               }
             }
             
@@ -256,16 +260,16 @@ open class OnlineAlgorithm(topo: Topo, val allowRecoveryPaths: Boolean = true) :
             repairedEdges.add(brokenEdge)
             pickedRps.add(rp)
             
-            (realPickedRps - pickedRps).forEach { rpToWidth[it] = rpToWidth[it]!! + 1 }   // release the previous rps
+            (realPickedRps - pickedRps).forEach { rpToWidth[it] = rpToWidth[it]!! + 1 } // release previous rps
             (pickedRps - realPickedRps).forEach { rpToWidth[it] = rpToWidth[it]!! - 1 }
             
             realPickedRps = pickedRps
             realRepairedEdges = repairedEdges
-            break  // one rp is sufficient. after all, we cannot swap one link to two
+            break
           }
           
-          if (!repaired) {  // this major path cannot be repaired
-            break  //
+          if (!repaired) {  // major path cannot be repaired
+            break 
           }
         }
         
@@ -299,7 +303,6 @@ open class OnlineAlgorithm(topo: Topo, val allowRecoveryPaths: Boolean = true) :
         val afterFids = topo.getEstablishedEntanglementFidelities(src, dst)
         newFidelitiesOnly(oldFids, afterFids)
       } else {
-        // 1-hop: fidelity is per delivered direct link
         val SDlinks = src.links
           .filter { link ->
             link.entangled &&
@@ -307,7 +310,7 @@ open class OnlineAlgorithm(topo: Topo, val allowRecoveryPaths: Boolean = true) :
             link.contains(dst) &&
             !link.utilized
           }
-          .sortedByDescending { it.fidelity } // optional: take best direct pairs
+          .sortedByDescending { it.fidelity } // take best direct pairs
         if (SDlinks.isNotEmpty()) {
           val succDirect = SDlinks.size.coerceAtMost(width)
           val used = SDlinks.take(succDirect)

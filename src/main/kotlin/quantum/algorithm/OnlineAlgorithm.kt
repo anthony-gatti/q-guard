@@ -322,12 +322,12 @@ open class OnlineAlgorithm(topo: Topo, val allowRecoveryPaths: Boolean = true) :
       val estF = if (deliveredFids.isNotEmpty()) deliveredFids.average() else 0.0
       val qualifiedSucc = deliveredFids.count { it + 1e-12 >= FTH }
 
-      logWriter.appendln(""" ${majorPath.map { it.id }}, $width $succ $estF $qualifiedSucc""")
+      logWriter.appendLine(""" ${majorPath.map { it.id }}, $width $succ $estF $qualifiedSucc""")
       pathToRecoveryPaths[pathWithWidth].forEach {
-        logWriter.appendln("""  ${it.path.map { it.id }}, $width ${it.available} ${it.taken}""")
+        logWriter.appendLine("""  ${it.path.map { it.id }}, $width ${it.available} ${it.taken}""")
       }
     }
     
-    logWriter.appendln()
+    logWriter.appendLine()
   }
 }

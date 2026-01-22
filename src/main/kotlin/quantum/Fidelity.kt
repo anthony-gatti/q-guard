@@ -21,10 +21,10 @@ object Fidelity {
 
     // fresh link fidelity, but with minor variance
     fun sampleFreshLinkFidelity(
-        tau: Double,
+        tau: Double
     ): Double {
         val base = 0.25
-        val stdAbs = 0.05
+        val stdAbs = 0.01
         val mean = freshLinkFidelity(tau).coerceIn(base, 1.0)
         val std = stdAbs
         // val std = (mean * stdRel)

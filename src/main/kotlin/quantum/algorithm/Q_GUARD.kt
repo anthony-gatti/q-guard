@@ -40,7 +40,7 @@ open class Q_GUARD(
 
     private data class PathExgResult(
         val exg: Double,
-        val feasible: Boolean,
+        val feasible: Boolean
     )
 
     // computes exg for a given path
@@ -54,7 +54,7 @@ open class Q_GUARD(
         if (path.size < 2 || width <= 0) {
             return PathExgResult(
                 exg = 0.0,
-                feasible = false,
+                feasible = false
             )
         }
 
@@ -110,7 +110,7 @@ open class Q_GUARD(
         if (!exgFeasible) {
             return PathExgResult(
                 exg = 0.0,
-                feasible = false,
+                feasible = false
             )
         }
 
@@ -133,7 +133,7 @@ open class Q_GUARD(
 
         return PathExgResult(
             exg = exg,
-            feasible = true,
+            feasible = true
         )
     }
 
@@ -534,7 +534,7 @@ open class Q_GUARD(
             val estF = if (deliveredFids.isNotEmpty()) deliveredFids.average() else 0.0
             val qualifiedSucc = deliveredFids.count { it + 1e-12 >= FTH }
 
-            logWriter.appendLine(""" ${majorPath.map { it.id }}, $width $succ $estF $qualifiedSucc""")
+            logWriter.append(""" ${majorPath.map { it.id }}, $width $succ $estF $qualifiedSucc""").append('\n')
 
             val avgF = estF
             val succAboveFth = qualifiedSucc
@@ -543,12 +543,12 @@ open class Q_GUARD(
 
             pathToRecoveryPaths[pathWithWidth].forEach { rpData ->
                 val ids = rpData.path.map { node -> node.id }
-                logWriter.appendLine(
+                logWriter.append(
                     """  $ids, $width ${rpData.available} ${rpData.taken}"""
-                )
+                ).append('\n')
             }
 
-            logWriter.appendLine()
+            logWriter.append('\n')
         }
     }
 }

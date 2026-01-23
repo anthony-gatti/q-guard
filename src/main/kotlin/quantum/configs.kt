@@ -19,6 +19,9 @@ val qList = listOf(0.9, 0.8, 0.85, 0.95, 1.0)
 val pList = listOf(0.6, 0.3, 0.9, 0.1)
 val nsdList = (1..10).toList()
 val topoRange = (1..1).toList()
+val fthList = listOf(
+  0.60, 0.65, 0.70, 0.75, 0.80, 0.85, 0.90, 0.95
+)
 
 
 val allAvailableSettings =
@@ -47,7 +50,10 @@ val allAvailableSettings =
 
 val referenceSetting = Tuple(dList.first(), nList.first(), pList.first(), qList.first(), kList.first(), nsdList.last())
 
-fun id(n: Int, topoIdx: Int, q: Double, k: Int, p: Double, d: Int, numPairs: Int, name: String) = """$n#$topoIdx-$q-$k-$p-$d-$numPairs-${name}"""
+fun id(n: Int, topoIdx: Int, q: Double, k: Int, p: Double, d: Int, numPairs: Int, name: String, fth: Double): String {
+  val fthTag = String.format(Locale.US, "%.2f", fth)
+  return """$n#$topoIdx-$q-$k-$p-$d-$numPairs-fth$fthTag-${name}"""
+}
 
 val records = ReducibleLazyEvaluation<String, MutableList<Record>>({ mutableListOf() })
 

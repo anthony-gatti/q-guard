@@ -52,6 +52,7 @@ class Plot {
       var (d, n, p, q, k, nsd) = referenceSetting
       if (mode == 2) p = 0.3
       else if (mode == 3) n = 400
+      val fth = 0.7
       
       var max = 0
       
@@ -60,7 +61,7 @@ class Plot {
         val sum = ReducibleLazyEvaluation<Int, Int>({ 0 })
         
         topoRange.flatMap { topoIdx ->
-          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name) + ".txt")
+          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name, fth) + ".txt")
         }.map { it.majorPaths.sumBy { it.succ } }.groupBy { it }.map { (k, v) ->
           k to v.size
         }.sortedBy { it.first }.forEach { (k, v) ->
@@ -90,10 +91,11 @@ class Plot {
   
   fun throughputNsd() {
     val (d, n, p, q, k, nsd) = referenceSetting
+    val fth = 0.7
     val results = names.map { name ->
       nsdList.sorted().map { nsd ->
         val rlist = topoRange.flatMap { topoIdx ->
-          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name) + ".txt")
+          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name, fth) + ".txt")
         }
         
         rlist.map { it.majorPaths.sumByDouble { it.succ.toDouble() } }.average()
@@ -102,7 +104,7 @@ class Plot {
     val resultsQ = names.map { name ->
       nsdList.sorted().map { nsd ->
         val rlist = topoRange.flatMap { topoIdx ->
-          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name) + ".txt")
+          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name, fth) + ".txt")
         }
         
         rlist.map { it.majorPaths.sumByDouble { it.qualifiedSucc.toDouble() } }.average()
@@ -112,7 +114,7 @@ class Plot {
     val results2 = names.map { name ->
       nsdList.sorted().map { nsd ->
         val rlist = topoRange.flatMap { topoIdx ->
-          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name) + ".txt")
+          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name, fth) + ".txt")
         }
         
         rlist.map { it.majorPaths.count { it.succ > 0 }.toDouble() }.average()
@@ -121,7 +123,7 @@ class Plot {
     val results2Q = names.map { name ->
       nsdList.sorted().map { nsd ->
         val rlist = topoRange.flatMap { topoIdx ->
-          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name) + ".txt")
+          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name, fth) + ".txt")
         }
         
         rlist.map { it.majorPaths.count { it.qualifiedSucc > 0 }.toDouble() }.average()
@@ -131,7 +133,7 @@ class Plot {
     val results3 = names.map { name ->
       nsdList.sorted().map { nsd ->
         val rlist = topoRange.flatMap { topoIdx ->
-          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name) + ".txt")
+          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name, fth) + ".txt")
         }
         
         rlist.map { it.majorPaths.filter { it.succ > 0 }.distinctBy { it.path.first() to it.path.last() }.size.toDouble() }.average()
@@ -140,7 +142,7 @@ class Plot {
     val results3Q = names.map { name ->
       nsdList.sorted().map { nsd ->
         val rlist = topoRange.flatMap { topoIdx ->
-          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name) + ".txt")
+          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name, fth) + ".txt")
         }
         
         rlist.map { it.majorPaths.filter { it.qualifiedSucc > 0 }.distinctBy { it.path.first() to it.path.last() }.size.toDouble() }.average()
@@ -203,10 +205,11 @@ class Plot {
   
   fun throughputD() {
     val (d, n, p, q, k, nsd) = referenceSetting
+    val fth = 0.7
     val results = names.map { name ->
       dList.sorted().map { d ->
         val rlist = topoRange.flatMap { topoIdx ->
-          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name) + ".txt")
+          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name, fth) + ".txt")
         }
         
         rlist.map { it.majorPaths.sumByDouble { it.succ.toDouble() } }.average()
@@ -216,7 +219,7 @@ class Plot {
     val results2 = names.map { name ->
       dList.sorted().map { d ->
         val rlist = topoRange.flatMap { topoIdx ->
-          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name) + ".txt")
+          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name, fth) + ".txt")
         }
         
         rlist.map { it.majorPaths.count { it.succ > 0 }.toDouble() }.average()
@@ -226,7 +229,7 @@ class Plot {
     val results3 = names.map { name ->
       dList.sorted().map { d ->
         val rlist = topoRange.flatMap { topoIdx ->
-          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name) + ".txt")
+          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name, fth) + ".txt")
         }
         
         rlist.map { it.majorPaths.filter { it.succ > 0 }.distinctBy { it.path.first() to it.path.last() }.size.toDouble() }.average()
@@ -235,7 +238,7 @@ class Plot {
     val resultsQ = names.map { name ->
       dList.sorted().map { d ->
         val rlist = topoRange.flatMap { topoIdx ->
-          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name) + ".txt")
+          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name, fth) + ".txt")
         }
         
         rlist.map { it.majorPaths.sumByDouble { it.qualifiedSucc.toDouble() } }.average()
@@ -245,7 +248,7 @@ class Plot {
     val results2Q = names.map { name ->
       dList.sorted().map { d ->
         val rlist = topoRange.flatMap { topoIdx ->
-          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name) + ".txt")
+          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name, fth) + ".txt")
         }
         
         rlist.map { it.majorPaths.count { it.qualifiedSucc > 0 }.toDouble() }.average()
@@ -255,7 +258,7 @@ class Plot {
     val results3Q = names.map { name ->
       dList.sorted().map { d ->
         val rlist = topoRange.flatMap { topoIdx ->
-          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name) + ".txt")
+          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name, fth) + ".txt")
         }
         
         rlist.map { it.majorPaths.filter { it.qualifiedSucc > 0 }.distinctBy { it.path.first() to it.path.last() }.size.toDouble() }.average()
@@ -317,10 +320,11 @@ class Plot {
   
   fun throughputP() {
     val (d, n, p, q, k, nsd) = referenceSetting
+    val fth = 0.7
     val results = names.map { name ->
       pList.sorted().map { p ->
         val rlist = topoRange.flatMap { topoIdx ->
-          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name) + ".txt")
+          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name, fth) + ".txt")
         }
         
         rlist.map { it.majorPaths.sumByDouble { it.succ.toDouble() } }.average()
@@ -330,7 +334,7 @@ class Plot {
     val results2 = names.map { name ->
       pList.sorted().map { p ->
         val rlist = topoRange.flatMap { topoIdx ->
-          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name) + ".txt")
+          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name, fth) + ".txt")
         }
         
         rlist.map { it.majorPaths.count { it.succ > 0 }.toDouble() }.average()
@@ -340,7 +344,7 @@ class Plot {
     val results3 = names.map { name ->
       pList.sorted().map { p ->
         val rlist = topoRange.flatMap { topoIdx ->
-          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name) + ".txt")
+          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name, fth) + ".txt")
         }
         
         rlist.map { it.majorPaths.filter { it.succ > 0 }.distinctBy { it.path.first() to it.path.last() }.size.toDouble() }.average()
@@ -350,7 +354,7 @@ class Plot {
     val resultsQ = names.map { name ->
       pList.sorted().map { p ->
         val rlist = topoRange.flatMap { topoIdx ->
-          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name) + ".txt")
+          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name, fth) + ".txt")
         }
         
         rlist.map { it.majorPaths.sumByDouble { it.qualifiedSucc.toDouble() } }.average()
@@ -360,7 +364,7 @@ class Plot {
     val results2Q = names.map { name ->
       pList.sorted().map { p ->
         val rlist = topoRange.flatMap { topoIdx ->
-          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name) + ".txt")
+          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name, fth) + ".txt")
         }
         
         rlist.map { it.majorPaths.count { it.qualifiedSucc > 0 }.toDouble() }.average()
@@ -370,7 +374,7 @@ class Plot {
     val results3Q = names.map { name ->
       pList.sorted().map { p ->
         val rlist = topoRange.flatMap { topoIdx ->
-          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name) + ".txt")
+          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name, fth) + ".txt")
         }
         
         rlist.map { it.majorPaths.filter { it.qualifiedSucc > 0 }.distinctBy { it.path.first() to it.path.last() }.size.toDouble() }.average()
@@ -432,10 +436,11 @@ class Plot {
   
   fun throughputN() {
     val (d, n, p, q, k, nsd) = referenceSetting
+    val fth = 0.7
     val results = names.map { name ->
       nList.sorted().map { n ->
         val rlist = topoRange.flatMap { topoIdx ->
-          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name) + ".txt")
+          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name, fth) + ".txt")
         }
         
         rlist.map { it.majorPaths.sumByDouble { it.succ.toDouble() } }.average()
@@ -445,7 +450,7 @@ class Plot {
     val results2 = names.map { name ->
       nList.sorted().map { n ->
         val rlist = topoRange.flatMap { topoIdx ->
-          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name) + ".txt")
+          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name, fth) + ".txt")
         }
         
         rlist.map { it.majorPaths.count { it.succ > 0 }.toDouble() }.average()
@@ -455,7 +460,7 @@ class Plot {
     val results3 = names.map { name ->
       nList.sorted().map { n ->
         val rlist = topoRange.flatMap { topoIdx ->
-          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name) + ".txt")
+          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name, fth) + ".txt")
         }
         
         rlist.map { it.majorPaths.filter { it.succ > 0 }.distinctBy { it.path.first() to it.path.last() }.size.toDouble() }.average()
@@ -464,7 +469,7 @@ class Plot {
     val resultsQ = names.map { name ->
       nList.sorted().map { n ->
         val rlist = topoRange.flatMap { topoIdx ->
-          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name) + ".txt")
+          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name, fth) + ".txt")
         }
         
         rlist.map { it.majorPaths.sumByDouble { it.qualifiedSucc.toDouble() } }.average()
@@ -474,7 +479,7 @@ class Plot {
     val results2Q = names.map { name ->
       nList.sorted().map { n ->
         val rlist = topoRange.flatMap { topoIdx ->
-          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name) + ".txt")
+          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name, fth) + ".txt")
         }
         
         rlist.map { it.majorPaths.count { it.qualifiedSucc > 0 }.toDouble() }.average()
@@ -484,7 +489,7 @@ class Plot {
     val results3Q = names.map { name ->
       nList.sorted().map { n ->
         val rlist = topoRange.flatMap { topoIdx ->
-          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name) + ".txt")
+          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name, fth) + ".txt")
         }
         
         rlist.map { it.majorPaths.filter { it.qualifiedSucc > 0 }.distinctBy { it.path.first() to it.path.last() }.size.toDouble() }.average()
@@ -558,10 +563,11 @@ class Plot {
   
   fun throughputQ() {
     val (d, n, p, q, k, nsd) = referenceSetting
+    val fth = 0.7
     val results = names.map { name ->
       qList.sorted().map { q ->
         val rlist = topoRange.flatMap { topoIdx ->
-          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name) + ".txt")
+          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name, fth) + ".txt")
         }
         
         rlist.map { it.majorPaths.sumByDouble { it.succ.toDouble() } }.average()
@@ -571,7 +577,7 @@ class Plot {
     val results2 = names.map { name ->
       qList.sorted().map { q ->
         val rlist = topoRange.flatMap { topoIdx ->
-          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name) + ".txt")
+          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name, fth) + ".txt")
         }
         
         rlist.map { it.majorPaths.count { it.succ > 0 }.toDouble() }.average()
@@ -581,7 +587,7 @@ class Plot {
     val results3 = names.map { name ->
       qList.sorted().map { q ->
         val rlist = topoRange.flatMap { topoIdx ->
-          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name) + ".txt")
+          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name, fth) + ".txt")
         }
         
         rlist.map { it.majorPaths.filter { it.succ > 0 }.distinctBy { it.path.first() to it.path.last() }.size.toDouble() }.average()
@@ -590,7 +596,7 @@ class Plot {
     val resultsQ = names.map { name ->
       qList.sorted().map { q ->
         val rlist = topoRange.flatMap { topoIdx ->
-          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name) + ".txt")
+          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name, fth) + ".txt")
         }
         
         rlist.map { it.majorPaths.sumByDouble { it.qualifiedSucc.toDouble() } }.average()
@@ -600,7 +606,7 @@ class Plot {
     val results2Q = names.map { name ->
       qList.sorted().map { q ->
         val rlist = topoRange.flatMap { topoIdx ->
-          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name) + ".txt")
+          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name, fth) + ".txt")
         }
         
         rlist.map { it.majorPaths.count { it.qualifiedSucc > 0 }.toDouble() }.average()
@@ -610,7 +616,7 @@ class Plot {
     val results3Q = names.map { name ->
       qList.sorted().map { q ->
         val rlist = topoRange.flatMap { topoIdx ->
-          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name) + ".txt")
+          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name, fth) + ".txt")
         }
         
         rlist.map { it.majorPaths.filter { it.qualifiedSucc > 0 }.distinctBy { it.path.first() to it.path.last() }.size.toDouble() }.average()
@@ -672,10 +678,11 @@ class Plot {
   
   fun throughputK() {
     val (d, n, p, q, k, nsd) = referenceSetting
+    val fth = 0.7
     val results = names.map { name ->
       kList.sorted().map { k ->
         val rlist = topoRange.flatMap { topoIdx ->
-          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name) + ".txt")
+          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name, fth) + ".txt")
         }
         
         rlist.map { it.majorPaths.sumByDouble { it.succ.toDouble() } }.average()
@@ -685,7 +692,7 @@ class Plot {
     val results2 = names.map { name ->
       kList.sorted().map { k ->
         val rlist = topoRange.flatMap { topoIdx ->
-          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name) + ".txt")
+          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name, fth) + ".txt")
         }
         
         rlist.map { it.majorPaths.count { it.succ > 0 }.toDouble() }.average()
@@ -695,7 +702,7 @@ class Plot {
     val results3 = names.map { name ->
       kList.sorted().map { k ->
         val rlist = topoRange.flatMap { topoIdx ->
-          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name) + ".txt")
+          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name, fth) + ".txt")
         }
         
         rlist.map { it.majorPaths.filter { it.succ > 0 }.distinctBy { it.path.first() to it.path.last() }.size.toDouble() }.average()
@@ -704,7 +711,7 @@ class Plot {
     val resultsQ = names.map { name ->
       kList.sorted().map { k ->
         val rlist = topoRange.flatMap { topoIdx ->
-          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name) + ".txt")
+          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name, fth) + ".txt")
         }
         
         rlist.map { it.majorPaths.sumByDouble { it.qualifiedSucc.toDouble() } }.average()
@@ -714,7 +721,7 @@ class Plot {
     val results2Q = names.map { name ->
       kList.sorted().map { k ->
         val rlist = topoRange.flatMap { topoIdx ->
-          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name) + ".txt")
+          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name, fth) + ".txt")
         }
         
         rlist.map { it.majorPaths.count { it.qualifiedSucc > 0 }.toDouble() }.average()
@@ -724,7 +731,7 @@ class Plot {
     val results3Q = names.map { name ->
       kList.sorted().map { k ->
         val rlist = topoRange.flatMap { topoIdx ->
-          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name) + ".txt")
+          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name, fth) + ".txt")
         }
         
         rlist.map { it.majorPaths.filter { it.qualifiedSucc > 0 }.distinctBy { it.path.first() to it.path.last() }.size.toDouble() }.average()
@@ -789,6 +796,52 @@ class Plot {
         }""".trimIndent()
     )
   }
+
+  fun throughputFth() {
+    val (d, n, p, q, k, nsd) = referenceSetting
+    val xs = fthList
+
+    // Raw throughput (succ)
+    val raw = names.map { name ->
+      xs.map { fth ->
+        val rlist = topoRange.flatMap { topoIdx ->
+          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name, fth) + ".txt")
+        }
+        rlist.map { it.majorPaths.sumByDouble { mp -> mp.succ.toDouble() } }.average()
+      }
+    }
+
+    // Qualified throughput (qualifiedSucc)
+    val qualified = names.map { name ->
+      xs.map { fth ->
+        val rlist = topoRange.flatMap { topoIdx ->
+          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name, fth) + ".txt")
+        }
+        rlist.map { it.majorPaths.sumByDouble { mp -> mp.qualifiedSucc.toDouble() } }.average()
+      }
+    }
+
+    children += listOf(
+      """
+        {
+          "name": "${"throughput-fth-$d-$n-$p-$q-$k-$nsd".replace(".", "")}",
+          "solutionList": ${names.map { """ "${nameMapping[it] ?: it}" """ }},
+          "xTitle": "Fidelity threshold (F_th)",
+          "yTitle": "Throughput (eps)",
+          "x": $xs,
+          "y": $raw
+        }""".trimIndent(),
+      """
+        {
+          "name": "${"qualified-throughput-fth-$d-$n-$p-$q-$k-$nsd".replace(".", "")}",
+          "solutionList": ${names.map { """ "${nameMapping[it] ?: it}" """ }},
+          "xTitle": "Fidelity threshold (F_th)",
+          "yTitle": "Qualified throughput (eps)",
+          "x": $xs,
+          "y": $qualified
+        }""".trimIndent()
+    )
+  }
   
   fun efficiency() {
     (1..3).forEach { mode ->
@@ -799,13 +852,14 @@ class Plot {
         else listOf("Online", "Online-R", "CR", "CR-R")
       
       val (d, n, p, q, k, nsd) = referenceSetting
+      val fth = 0.7
       var max = 0
       
       val channels = names.map { name ->
         val result = ReducibleLazyEvaluation<Int, Double>({ Double.NaN })
         
         topoRange.flatMap { topoIdx ->
-          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name) + ".txt")
+          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name, fth) + ".txt")
         }.map {
           it.majorPaths.sumBy { it.succ } to it.rpChannelCnt +
               it.majorPaths.sumBy { it.width * (it.path.size - 1) + it.recoveryPaths.sumBy { it.width * (it.path.size - 1) } }
@@ -832,6 +886,7 @@ class Plot {
   
   fun fairness() {
     val (d, n, p, q, k, nsd) = referenceSetting
+    val fth = 0.7
     
     var max = 0
     
@@ -840,7 +895,7 @@ class Plot {
       val sum = ReducibleLazyEvaluation<Int, Int>({ 0 })
       
       topoRange.flatMap { topoIdx ->
-        parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name) + ".txt")
+        parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name, fth) + ".txt")
       }.flatMap { it.majorPaths.groupBy { it.path.first() to it.path.last() }.map { it.value.sumBy { it.width } } }
         .groupBy { it }.map { (k, v) -> k to v.size }.sortedBy { it.first }.forEach { (k, v) ->
           max = Math.max(max, k)
@@ -871,6 +926,7 @@ class Plot {
     val q = qList.first()
     val k = kList.first()
     val d = dList.first()
+    val fth = 0.7
     
     pList.forEach { p ->
       for (n in nList.sorted()) {
@@ -885,7 +941,7 @@ class Plot {
         val results = names.map { name ->
           nsdList.sorted().map { nsd ->
             val rlist = topoRange.flatMap { topoIdx ->
-              parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name) + ".txt")
+              parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name, fth) + ".txt")
             }
             
             rlist.map { it.majorPaths.sumByDouble { it.succ.toDouble() } }.average()
@@ -895,7 +951,7 @@ class Plot {
         val results2 = names.map { name ->
           nsdList.sorted().map { nsd ->
             val rlist = topoRange.flatMap { topoIdx ->
-              parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name) + ".txt")
+              parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name, fth) + ".txt")
             }
             
             rlist.map { it.majorPaths.count { it.succ > 0 }.toDouble() }.average()
@@ -927,6 +983,7 @@ class Plot {
   
   fun rp2Cdf_nsd() {
     val (d, n, p, q, k, nsd) = referenceSetting
+    val fth = 0.7
     var max1 = 0
     val result1 =
       nsdList.sorted().map { nsd ->
@@ -934,7 +991,7 @@ class Plot {
         val sum = ReducibleLazyEvaluation<Int, Int>({ 0 })
         
         val y = topoRange.flatMap { topoIdx ->
-          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, "Online") + ".txt")
+          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, "Online", fth) + ".txt")
         }.flatMap { it.majorPaths.flatMap { it.recoveryPaths.map { it.path.size - 1 } } }
         
         y.groupBy { it }.map { (k, v) -> k to v.size }.sortedBy { it.first }.forEach { (k, v) ->
@@ -971,7 +1028,7 @@ class Plot {
         val sum = ReducibleLazyEvaluation<Int, Int>({ 0 })
         
         val y = topoRange.flatMap { topoIdx ->
-          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, "Online") + ".txt")
+          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, "Online", fth) + ".txt")
         }.flatMap { it.majorPaths.flatMap { it.recoveryPaths.map { it.width } } }
         
         y.groupBy { it }.map { (k, v) -> k to v.size }.sortedBy { it.first }.forEach { (k, v) ->
@@ -1009,7 +1066,7 @@ class Plot {
         val sum = ReducibleLazyEvaluation<Int, Int>({ 0 })
         
         val y = topoRange.flatMap { topoIdx ->
-          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, "Online") + ".txt")
+          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, "Online", fth) + ".txt")
         }.flatMap { it.majorPaths.map { it.recoveryPaths.sumBy { it.width } } }
         
         y.groupBy { it }.map { (k, v) -> k to v.size }.sortedBy { it.first }.forEach { (k, v) ->
@@ -1047,7 +1104,7 @@ class Plot {
       val sum = ReducibleLazyEvaluation<Int, Int>({ 0 })
       
       topoRange.flatMap { topoIdx ->
-        parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name) + ".txt")
+        parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name, fth) + ".txt")
       }.map { it.majorPaths.sumBy { it.succ } }.groupBy { it }.map { (k, v) ->
         k to v.size
       }.sortedBy { it.first }.forEach { (k, v) ->
@@ -1078,6 +1135,7 @@ class Plot {
   
   fun rp2Cdf_n() {
     val (d, n, p, q, k, nsd) = referenceSetting
+    val fth = 0.7
     var max1 = 0
     val result1 =
       nList.sorted().map { n ->
@@ -1085,7 +1143,7 @@ class Plot {
         val sum = ReducibleLazyEvaluation<Int, Int>({ 0 })
         
         val y = topoRange.flatMap { topoIdx ->
-          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, "Online") + ".txt")
+          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, "Online", fth) + ".txt")
         }.flatMap { it.majorPaths.flatMap { it.recoveryPaths.map { it.path.size - 1 } } }
         
         y.groupBy { it }.map { (k, v) -> k to v.size }.sortedBy { it.first }.forEach { (k, v) ->
@@ -1119,7 +1177,7 @@ class Plot {
         val sum = ReducibleLazyEvaluation<Int, Int>({ 0 })
         
         val y = topoRange.flatMap { topoIdx ->
-          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, "Online") + ".txt")
+          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, "Online", fth) + ".txt")
         }.flatMap { it.majorPaths.flatMap { it.recoveryPaths.map { it.width } } }
         
         y.groupBy { it }.map { (k, v) -> k to v.size }.sortedBy { it.first }.forEach { (k, v) ->
@@ -1155,7 +1213,7 @@ class Plot {
         val sum = ReducibleLazyEvaluation<Int, Int>({ 0 })
         
         val y = topoRange.flatMap { topoIdx ->
-          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, "Online") + ".txt")
+          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, "Online", fth) + ".txt")
         }.flatMap { it.majorPaths.map { it.recoveryPaths.sumBy { it.width } } }
         
         y.groupBy { it }.map { (k, v) -> k to v.size }.sortedBy { it.first }.forEach { (k, v) ->
@@ -1185,12 +1243,13 @@ class Plot {
   
   fun rp2Nsd() {
     val (d, n, p, q, k, nsd) = referenceSetting
+    val fth = 0.7
     val names = listOf("Online", "Online-R")
     
     val results = names.map { name ->
       nsdList.sorted().map { nsd ->
         val rlist = topoRange.flatMap { topoIdx ->
-          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name) + ".txt")
+          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name, fth) + ".txt")
         }
         
         rlist.map { it.majorPaths.sumByDouble { it.succ.toDouble() } }.average()
@@ -1200,7 +1259,7 @@ class Plot {
     val results2 = names.map { name ->
       nsdList.sorted().map { nsd ->
         val rlist = topoRange.flatMap { topoIdx ->
-          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name) + ".txt")
+          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name, fth) + ".txt")
         }
         
         rlist.map { it.majorPaths.count { it.succ > 0 }.toDouble() }.average()
@@ -1230,13 +1289,14 @@ class Plot {
   
   fun rp2N() {
     val (d, n, p, q, k, nsd) = referenceSetting
+    val fth = 0.7
     
     val names = listOf("Online", "Online-R")
     
     val results = names.map { name ->
       nList.sorted().map { n ->
         val rlist = topoRange.flatMap { topoIdx ->
-          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name) + ".txt")
+          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name, fth) + ".txt")
         }
         
         rlist.map { it.majorPaths.sumByDouble { it.succ.toDouble() } }.average()
@@ -1246,7 +1306,7 @@ class Plot {
     val results2 = names.map { name ->
       nList.sorted().map { n ->
         val rlist = topoRange.flatMap { topoIdx ->
-          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name) + ".txt")
+          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name, fth) + ".txt")
         }
         
         rlist.map { it.majorPaths.count { it.succ > 0 }.toDouble() }.average()
@@ -1291,6 +1351,7 @@ class Plot {
       p.throughputNsd()
       p.throughputP()
       p.throughputQ()
+      p.throughputFth()
       
       // p.efficiency()
       // p.fairness()

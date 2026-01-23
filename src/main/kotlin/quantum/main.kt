@@ -74,61 +74,64 @@ fun sim() {
       //   }
       // }
 
-      val algorithms = synchronized(topo) {
-        topo.q = q
-        topo.k = k
-        topo.alpha = alpha
+      fthList.forEach { FTH ->
 
-        val FTH = 0.7
+        val algorithms = synchronized(topo) {
+          topo.q = q
+          topo.k = k
+          topo.alpha = alpha
 
-        val algorithms = mutableListOf<Algorithm>(
-          // Q-CAST with recovery paths, evaluated at F_th = 0.7
-          OnlineAlgorithm(Topo(topo), allowRecoveryPaths = true).apply {
-            setDefaultThreshold(FTH)
-          },
-          Q_CAST_PUR(Topo(topo), allowRecoveryPaths = true).apply {
-            setDefaultThreshold(FTH)
-          },
-          // Your fidelity-guaranteed online algorithm (internal F_TH = 0.7)
-          // FidelityGuaranteedOnlineAlgorithm(Topo(topo), allowRecoveryPaths = true),
-          Q_GUARD(Topo(topo), allowRecoveryPaths = true), 
-          Q_GUARD_FP(Topo(topo), allowRecoveryPaths = true)        
-        )
+          val algorithms = mutableListOf<Algorithm>(
+            OnlineAlgorithm(Topo(topo), allowRecoveryPaths = true).apply {
+              setDefaultThreshold(FTH)
+            },
+            Q_CAST_PUR(Topo(topo), allowRecoveryPaths = true).apply {
+              setDefaultThreshold(FTH)
+            },
+            Q_GUARD(Topo(topo), allowRecoveryPaths = true).apply {
+              setDefaultThreshold(FTH)
+            },
+            Q_GUARD_FP(Topo(topo), allowRecoveryPaths = true).apply {
+              setDefaultThreshold(FTH)
+            }
+          )
 
-        algorithms.filter { solver ->
-          val done = try {
-            File("dist/${id(n, topoIdx, q, k, p, d, nsd, solver.name)}.txt")
-              .readLines()
-              .drop(2)
-              .any { line -> line.startsWith("--") }
-          } catch (e: Exception) {
-            false
+          algorithms.filter { solver ->
+            val settings = id(n, topoIdx, q, k, p, d, nsd, solver.name, FTH)
+
+            val done = try {
+              File("dist/$settings.txt")
+                .readLines()
+                .drop(2)
+                .any { line -> line.startsWith("--") }
+            } catch (e: Exception) {
+              false
+            }
+
+            if (done) println("skip $settings")
+            !done
           }
-          if (done) {
-            println("skip ${id(n, topoIdx, q, k, p, d, nsd, solver.name)}")
-          }
-          !done
         }
-      }
-      
-      algorithms.forEach { solver ->
-        solver.settings = id(n, topoIdx, q, k, p, d, nsd, solver.name)
-        val fn = "dist/${solver.settings}.txt"
-        
-        executor.execute {
-          val topo = solver.topo
-          println(topo.getStatistics())
-          
-          solver.logWriter = BufferedWriter(FileWriter(fn))
-          
-          testSet.forEach {
-            solver.work(it.map { Pair(topo.nodes[it.first], topo.nodes[it.second]) })
+
+        algorithms.forEach { solver ->
+          solver.settings = id(n, topoIdx, q, k, p, d, nsd, solver.name, FTH)
+          val fn = "dist/${solver.settings}.txt"
+
+          executor.execute {
+            val topo = solver.topo
+            println(topo.getStatistics())
+
+            solver.logWriter = BufferedWriter(FileWriter(fn))
+
+            testSet.forEach {
+              solver.work(it.map { Pair(topo.nodes[it.first], topo.nodes[it.second]) })
+            }
+
+            solver.logWriter.appendln("-----------")
+            solver.logWriter.appendln(topo.toString())
+            solver.logWriter.appendln(topo.getStatistics())
+            solver.logWriter.close()
           }
-          
-          solver.logWriter.appendln("-----------")
-          solver.logWriter.appendln(topo.toString())
-          solver.logWriter.appendln(topo.getStatistics())
-          solver.logWriter.close()
         }
       }
     }
@@ -180,25 +183,15 @@ fun simpleTest() {
   p.zip(alphas).forEach { (p, a) ->
     val topo = Topo(netTopology.toString().lines().mapIndexed { i, line -> if (i == 1) a.toString() else line }.joinToString("\n"))
     println(topo.getStatistics())
-
-    val FTH = 0.7
     
     val algorithms = listOf(
-      OnlineAlgorithm(Topo(topo), allowRecoveryPaths = true).apply {
-          setDefaultThreshold(FTH)
-      },
-      Q_CAST_PUR(Topo(topo), allowRecoveryPaths = true).apply {
-          setDefaultThreshold(FTH)
-      },
+      OnlineAlgorithm(Topo(topo), allowRecoveryPaths = true) ,
+      Q_CAST_PUR(Topo(topo), allowRecoveryPaths = true),
       // FidelityGuaranteedOnlineAlgorithm(Topo(topo), allowRecoveryPaths = true).apply {
       //     setDefaultThreshold(FTH)
       // },
-      Q_GUARD(Topo(topo), allowRecoveryPaths = true).apply {
-          setDefaultThreshold(FTH)
-      },
-      Q_GUARD_FP(Topo(topo), allowRecoveryPaths = true).apply {
-          setDefaultThreshold(FTH)
-      }
+      Q_GUARD(Topo(topo), allowRecoveryPaths = true),
+      Q_GUARD_FP(Topo(topo), allowRecoveryPaths = true)
 //      , OnlineAlgorithmWithRecoveryPaths(Topo(topo))
 //      , BotCap(Topo(topo)),  CreationRate(Topo(topo)),
 //      SumDist(Topo(topo)),

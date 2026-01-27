@@ -1343,14 +1343,14 @@ class Plot {
     fun main(args: Array<String>) {
       val p = Plot()
       
-      p.throughputCdf()
+      // p.throughputCdf()
       
-      p.throughputD()
-      p.throughputK()
-      p.throughputN()
-      p.throughputNsd()
+      // p.throughputD()
+      // p.throughputK()
+      // p.throughputN()
+      // p.throughputNsd()
       p.throughputP()
-      p.throughputQ()
+      // p.throughputQ()
       p.throughputFth()
       
       // p.efficiency()

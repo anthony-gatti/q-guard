@@ -65,6 +65,7 @@ class Topo(input: String) {
   val distanceDigits: Int
   
   val internalLength: Double
+    get() = ln(1.0 / q) / alpha
   
   init {
     val lines = LinkedList(input.lines().map { it.replace(Regex("""\s*//.*$"""), "") }.filter { it.isNotBlank() })
@@ -74,7 +75,6 @@ class Topo(input: String) {
     alpha = lines.pollFirst()!!.toDouble()
     q = lines.pollFirst()!!.toDouble()
     k = lines.pollFirst()!!.toInt()
-    internalLength = Math.log(1 / q) / alpha
     
     (0 until n).forEach { i ->
       val line = lines.pollFirst()!!
@@ -87,19 +87,25 @@ class Topo(input: String) {
     
     while (lines.isNotEmpty()) {
       val linkLine = lines.pollFirst()!!
-      val tmp = linkLine.split(" ").map { it.toInt() }
-      val (n1, n2) = tmp.subList(0, 2).map { nodes[it] }.sortedBy { it.id }
-      val nm = tmp[2]
-      
+      val toks = linkLine.trim().split(Regex("\\s+"))
+
+      val id1 = toks[0].toInt()
+      val id2 = toks[1].toInt()
+      val (n1, n2) = listOf(nodes[id1], nodes[id2]).sortedBy { it.id }
+
+      val nm = toks[2].toInt()
+      val lOverride = if (toks.size >= 4) toks[3].toDouble() else +(n1.loc - n2.loc)
+
       require({ n1.id < n2.id })
-      
+
       (1..nm).forEach {
-        val link = Link(this, n1, n2, +(n1.loc - n2.loc))
+        val link = Link(this, n1, n2, lOverride)
         links.add(link)
         n1.links.add(link)
         n2.links.add(link)
       }
     }
+
     
     linkDigits = Math.ceil(Math.log10(links.size.toDouble())).roundToInt()
     
@@ -125,7 +131,12 @@ $alpha
 $q
 $k
 ${nodes.map { "${it.nQubits} ${it.loc.joinToString(" ")}" }.joinToString("\n")}
-${links.groupBy { it.n1 to it.n2 }.map { "${it.key.n1.id} ${it.key.n2.id} ${it.value.size}" }.joinToString("\n")}
+${links.groupBy { it.n1 to it.n2 }.map { entry ->
+  val e = entry.key
+  val bundle = entry.value
+  val l = bundle.first().l
+  "${e.n1.id} ${e.n2.id} ${bundle.size} ${"%.6f".format(Locale.US, l)}"
+}.joinToString("\n")}
 """.trim().trimIndent()
   
   fun getStatistics(): String {
@@ -134,10 +145,10 @@ ${links.groupBy { it.n1 to it.n2 }.map { "${it.key.n1.id} ${it.key.n2.id} ${it.v
     val avgLinks = numLinks.sum().toDouble() / n
     val avgNeighbors = numNeighbors.sum().toDouble() / n
     
-    val linkLengths = links.map { +(it.n1.loc - it.n2.loc) }.sorted()
+    val linkLengths = links.map { it.l }.sorted()
     val avgLinkLength = linkLengths.sumByDouble { it } / links.size
     
-    val linkSuccPossibilities = links.map { Math.E.pow(-alpha * +(it.n1.loc - it.n2.loc)) }.sorted()
+    val linkSuccPossibilities = links.map { Math.E.pow(-alpha * it.l) }.sorted()
     val avglinkSuccP = linkSuccPossibilities.sum() / links.size
     
     val numQubits = nodes.map { it.nQubits }.sorted()
@@ -388,7 +399,10 @@ ${links.groupBy { it.n1 to it.n2 }.map { "${it.key.n1.id} ${it.key.n2.id} ${it.v
   fun e(path: Path, mul: Int, oldP: DoubleArray): Double {
     val s = path.size - 1
     val P = DoubleArray(mul + 1, { 0.0 })
-    val p = listOf(0.0) + path.edges().map { Math.E.pow(-alpha * +(it.n1.loc - it.n2.loc)) }
+    val p = listOf(0.0) + path.edges().map { edge ->
+      val l = linksBetween(edge).first().l
+      Math.E.pow(-alpha * l)
+    }
     
     var start = s
     if (oldP.sum() == 0.0) {
@@ -437,7 +451,10 @@ ${links.groupBy { it.n1 to it.n2 }.map { "${it.key.n1.id} ${it.key.n2.id} ${it.v
   }
   
   fun shortestPath(edges: Collection<Edge>, src: Node, dst: Node, fStateMetric: ReducibleLazyEvaluation<Edge, Double> =
-    ReducibleLazyEvaluation({ +(it.n1.loc - it.n2.loc) + internalLength })
+    ReducibleLazyEvaluation({
+      val l = linksBetween(it).firstOrNull()?.l ?: +(it.n1.loc - it.n2.loc)
+      l + internalLength
+    })
   ): Pair<Double, Path> {
     val neighborsOf: Map<Node, List<Pair<Node, Double>>> = (edges + edges.map { it.n2 to it.n1 }).map { it.toList() }.groupBy { it.first() }.map { it.key to it.value.map { it[1] to fStateMetric[it[0] to it[1]] } }.toMap()
     
@@ -606,10 +623,40 @@ ${links.groupBy { it.n1 to it.n2 }.map { "${it.key.n1.id} ${it.key.n2.id} ${it.v
       }.joinToString(""))
     }
     
-    fun generate(n: Int, q: Double, k: Int, a: Double, degree: Int): Topo {
+    fun generate(
+      n: Int,
+      q: Double,
+      k: Int,
+      a: Double,
+      degree: Int,
+      candidateRadiusFactor: Double = 2.0, // old behavior
+      lengthSigma: Double = 0.0,           // 0.0 => no variability (old behavior)
+      lengthClampMin: Double = 0.6,
+      lengthClampMax: Double = 1.8
+    ): Topo {
       val alpha: Double = a
       val nodeLocs = mutableListOf<DoubleArray>()
       val links = mutableListOf<Pair<Int, Int>>()
+
+      val lenMap = HashMap<Pair<Int, Int>, Double>()
+
+      fun edgeKey(u: Int, v: Int): Pair<Int, Int> = if (u < v) (u to v) else (v to u)
+
+      fun sampleFactor(): Double {
+        if (lengthSigma <= 0.0) return 1.0
+        // LogNormal with mean ~ 1.0
+        val z = randGen.nextGaussian()
+        val f = exp(z * lengthSigma - 0.5 * lengthSigma * lengthSigma)
+        return f.coerceIn(lengthClampMin, lengthClampMax)
+      }
+
+      fun physLen(u: Int, v: Int): Double {
+        val key = edgeKey(u, v)
+        return lenMap.getOrPut(key) {
+          val d = +(nodeLocs[u] - nodeLocs[v])
+          d * sampleFactor()
+        }
+      }
       
       val controllingD = sqrt(edgeLen * edgeLen / n)
       while (nodeLocs.size < n) {
@@ -626,7 +673,7 @@ ${links.groupBy { it.n1 to it.n2 }.map { "${it.key.n1.id} ${it.key.n2.id} ${it.v
           val (l1, l2) = listOf(n1, n2).map { nodeLocs[it] }
           val d = +(l2 - l1)
           
-          if (d < 2 * controllingD) {
+          if (d < candidateRadiusFactor * controllingD) {
             val l = (1..50).map { randGen.nextDouble() }.min()!!
             val r = Math.E.pow(-beta * d)
             if (l < r) {
@@ -653,9 +700,15 @@ ${links.groupBy { it.n1 to it.n2 }.map { "${it.key.n1.id} ${it.key.n2.id} ${it.v
         }
       }
       
+      val minDeg = maxOf(2, degree)
       links.flatMap { it.toList() }.groupBy { it }.forEach { id, occ ->
-        if (occ.size / 2 < 5) {
-          val nearest = (0 until n).sortedBy { +(nodeLocs[it] - nodeLocs[id]) }.take(6 - occ.size / 2).drop(1)
+        val curDeg = occ.size / 2
+        if (curDeg < minDeg) {
+          val need = (minDeg - curDeg)
+          val nearest = (0 until n)
+            .sortedBy { +(nodeLocs[it] - nodeLocs[id]) }
+            .drop(1)
+            .take(need)
           links.addAll(nearest.map {
             val tmp = listOf(it, id).sorted()
             tmp[0] to tmp[1]
@@ -668,8 +721,17 @@ $n
 $alpha
 $q
 $k
-${nodeLocs.mapIndexed { id, loc -> "${(randGen.nextDouble() * 5 + 10).toInt()} ${loc.joinToString(" ")}" }.joinToString("\n")}
-${links.map { "${it.first} ${it.second} ${(randGen.nextDouble() * 5 + 3).toInt()}" }.joinToString("\n")}
+${nodeLocs.mapIndexed { id, loc ->
+  val nq = (randGen.nextDouble() * 12 + 20).toInt()
+  "$nq ${loc.joinToString(" ")}"
+}.joinToString("\n")}
+${links.map {
+  val u = it.first
+  val v = it.second
+  val m = (randGen.nextDouble() * 8 + 6).toInt()
+  val l = physLen(u, v)
+  "${u} ${v} $m ${"%.6f".format(Locale.US, l)}"
+}.joinToString("\n")}
       """.trimIndent())
     }
   }

@@ -24,83 +24,131 @@ fun sim() {
     }, false, 0.001)
   })
   val repeat = 1000
+
+  // Quick switches - remove when done
+  val OUT_DIR = "dist"
+  File(OUT_DIR).mkdirs()
+
+  val RUN_FTH_CHART = true
+  val RUN_P_CHART   = true
+  val P_CHART_FTH   = 0.70
+
   
   topoRange.forEach { topoIdx ->
     val executor = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors())
     
-    allAvailableSettings.forEach { (d, n, p, q, k, nsd) ->
+    // allAvailableSettings.forEach { (d, n, p, q, k, nsd) ->
+    //   val topo = topos[n to d]!!
+    //   val alpha = alphaStore[topo to p]
+      
+    //   val testSet = (1..repeat).map {
+    //     (0 until n).shuffled(randGen).take(2 * nsd).chunked(2).map { it.toPair() }
+    //   }
+
+    //   fthList.forEach { FTH ->
+
+    //     val algorithms = synchronized(topo) {
+    //       topo.q = q
+    //       topo.k = k
+    //       topo.alpha = alpha
+
+    //       val algorithms = mutableListOf<Algorithm>(
+    //         OnlineAlgorithm(Topo(topo), allowRecoveryPaths = true).apply {
+    //           setDefaultThreshold(FTH)
+    //         },
+    //         Q_CAST_PUR(Topo(topo), allowRecoveryPaths = true).apply {
+    //           setDefaultThreshold(FTH)
+    //         },
+    //         Q_GUARD(Topo(topo), allowRecoveryPaths = true).apply {
+    //           setDefaultThreshold(FTH)
+    //         },
+    //         Q_GUARD_FP(Topo(topo), allowRecoveryPaths = true).apply {
+    //           setDefaultThreshold(FTH)
+    //         }
+    //       )
+
+    //       algorithms.filter { solver ->
+    //         val settings = id(n, topoIdx, q, k, p, d, nsd, solver.name, FTH)
+
+    //         val done = try {
+    //           File("dist/$settings.txt")
+    //             .readLines()
+    //             .drop(2)
+    //             .any { line -> line.startsWith("--") }
+    //         } catch (e: Exception) {
+    //           false
+    //         }
+
+    //         if (done) println("skip $settings")
+    //         !done
+    //       }
+    //     }
+
+    //     algorithms.forEach { solver ->
+    //       solver.settings = id(n, topoIdx, q, k, p, d, nsd, solver.name, FTH)
+    //       val fn = "dist/${solver.settings}.txt"
+
+    //       executor.execute {
+    //         val topo = solver.topo
+    //         println(topo.getStatistics())
+
+    //         solver.logWriter = BufferedWriter(FileWriter(fn))
+
+    //         testSet.forEach {
+    //           solver.work(it.map { Pair(topo.nodes[it.first], topo.nodes[it.second]) })
+    //         }
+
+    //         solver.logWriter.appendln("-----------")
+    //         solver.logWriter.appendln(topo.toString())
+    //         solver.logWriter.appendln(topo.getStatistics())
+    //         solver.logWriter.close()
+    //       }
+    //     }
+    //   }
+    // }
+
+    // --- BEGIN BRIEF TESTS ---
+    val (d0, n0, p0, q0, k0, nsd0) = referenceSetting
+    val settingsToRun = mutableSetOf(referenceSetting)
+
+    if (RUN_FTH_CHART) settingsToRun.add(referenceSetting)
+    if (RUN_P_CHART) {
+      pList.sorted().forEach { p -> settingsToRun.add(Tuple(d0, n0, p, q0, k0, nsd0)) }
+    }
+
+    settingsToRun.forEach { (d, n, p, q, k, nsd) ->
       val topo = topos[n to d]!!
       val alpha = alphaStore[topo to p]
-      
+
       val testSet = (1..repeat).map {
         (0 until n).shuffled(randGen).take(2 * nsd).chunked(2).map { it.toPair() }
       }
-      
-      // val algorithms = synchronized(topo) {
-      //   topo.q = q
-      //   topo.k = k
-      //   topo.alpha = alpha
-        
-      //   val algorithms = mutableListOf(
-      //     OnlineAlgorithm(Topo(topo)),
-      //     OnlineAlgorithm(Topo(topo), false),
-      //     CreationRate(Topo(topo)),
-      //     SingleLink(Topo(topo)),
-      //     GreedyGeographicRouting(Topo(topo)),
-      //     GreedyHopRouting(Topo(topo)),
-      //     FidelityGuaranteedRouting(Topo(topo))
-      //   )
-        
-      //   if (n == nList.first() && q == qList.first() && p == pList.first() && d == dList.first() && k == kList.first()) {
-      //     algorithms.addAll(listOf(
-      //       BotCap(Topo(topo)),
-      //       SumDist(Topo(topo)), MultiMetric(Topo(topo)),
-            
-      //       BotCap(Topo(topo), false), CreationRate(Topo(topo), false),
-      //       SumDist(Topo(topo), false), MultiMetric(Topo(topo), false),
-      //       SingleLink(Topo(topo), false)
-      //     ))
-      //   }
-        
-      //   algorithms.filter {
-      //     val done = try {
-      //       File("dist/${id(n, topoIdx, q, k, p, d, nsd, it.name)}.txt").readLines().drop(2).any { it.startsWith("--") }
-      //     } catch (e: Exception) {
-      //       false
-      //     }
-      //     if (done)
-      //       println("skip ${id(n, topoIdx, q, k, p, d, nsd, it.name)}")
-      //     !done
-      //   }
-      // }
 
-      fthList.forEach { FTH ->
+      // Decide which FTH values to run for *this* setting:
+      val fthsToRun = mutableSetOf<Double>()
+      if (RUN_P_CHART) fthsToRun.add(P_CHART_FTH)
+      if (RUN_FTH_CHART && d == d0 && n == n0 && p == p0 && q == q0 && k == k0 && nsd == nsd0) {
+        fthsToRun.addAll(fthList)
+      }
 
+      fthsToRun.forEach { FTH ->
         val algorithms = synchronized(topo) {
           topo.q = q
           topo.k = k
           topo.alpha = alpha
 
           val algorithms = mutableListOf<Algorithm>(
-            OnlineAlgorithm(Topo(topo), allowRecoveryPaths = true).apply {
-              setDefaultThreshold(FTH)
-            },
-            Q_CAST_PUR(Topo(topo), allowRecoveryPaths = true).apply {
-              setDefaultThreshold(FTH)
-            },
-            Q_GUARD(Topo(topo), allowRecoveryPaths = true).apply {
-              setDefaultThreshold(FTH)
-            },
-            Q_GUARD_FP(Topo(topo), allowRecoveryPaths = true).apply {
-              setDefaultThreshold(FTH)
-            }
+            OnlineAlgorithm(Topo(topo), allowRecoveryPaths = true).apply { setDefaultThreshold(FTH) },
+            Q_CAST_PUR(Topo(topo), allowRecoveryPaths = true).apply { setDefaultThreshold(FTH) },
+            Q_GUARD(Topo(topo), allowRecoveryPaths = true).apply { setDefaultThreshold(FTH) },
+            Q_GUARD_FP(Topo(topo), allowRecoveryPaths = true).apply { setDefaultThreshold(FTH) }
           )
 
           algorithms.filter { solver ->
             val settings = id(n, topoIdx, q, k, p, d, nsd, solver.name, FTH)
 
             val done = try {
-              File("dist/$settings.txt")
+              File("$OUT_DIR/$settings.txt")
                 .readLines()
                 .drop(2)
                 .any { line -> line.startsWith("--") }
@@ -115,7 +163,7 @@ fun sim() {
 
         algorithms.forEach { solver ->
           solver.settings = id(n, topoIdx, q, k, p, d, nsd, solver.name, FTH)
-          val fn = "dist/${solver.settings}.txt"
+          val fn = "$OUT_DIR/${solver.settings}.txt"
 
           executor.execute {
             val topo = solver.topo
@@ -135,7 +183,8 @@ fun sim() {
         }
       }
     }
-    
+    // --- END BRIEF TESTS ---
+
     executor.shutdown()
     executor.awaitTermination(Long.MAX_VALUE, TimeUnit.DAYS)
   }

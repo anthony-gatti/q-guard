@@ -41,9 +41,13 @@ object Fidelity {
     }
 
     fun perHopTargetF(Fth: Double, hops: Int): Double {
-        val wth = wFromF(Fth)
-        val wHop = Math.pow(wth, 1.0 / hops)
-        return fFromW(wHop)
+        val base = 0.25
+        val h = hops.coerceAtLeast(1)
+        val F = Fth.coerceIn(base, 1.0)
+
+        val wth = wFromF(F).coerceAtLeast(0.0) // avoid negative Werner
+        val wHop = Math.pow(wth, 1.0 / h.toDouble())
+        return fFromW(wHop).coerceIn(base, 1.0)
     }
 
     /**

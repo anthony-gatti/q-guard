@@ -39,14 +39,14 @@ class Plot {
     )
   }
   
-  val nameMapping = mapOf("SL" to "SLMP", "Online" to "Q-CAST", "Online-R" to "Q-CAST\\\\R", "CR" to "Q-PASS", "CR-R" to "Q-PASS\\\\R", "Greedy_H" to "Greedy", "QG" to "Q-GUARD", "QG-FP" to "Q-GUARD-FP", "Q-CAST-PUR" to "Q-CAST-PUR")
+  val nameMapping = mapOf("SL" to "SLMP", "Online" to "Q-CAST", "Online-R" to "Q-CAST\\\\R", "CR" to "Q-PASS", "CR-R" to "Q-PASS\\\\R", "Greedy_H" to "Greedy", "QG" to "Q-GUARD", "QG-FP" to "Q-GUARD-FP", "Q-CAST-PUR" to "Q-CAST-PUR", "QG-WS" to "Q-GUARD-WS")
   // val names = listOf("Online", "SL", "Greedy_H", "CR")
-  val names = listOf("Online", "QG", "QG-FP", "Q-CAST-PUR")
+  val names = listOf("Online", "QG", "QG-FP", "Q-CAST-PUR", "QG-WS")
   
   fun throughputCdf() {
-    val nameMapping = mapOf("SL" to "SLMP", "Online" to "Q-CAST", "Greedy_H" to "Greedy", "QG" to "Q-GUARD", "QG-FP" to "Q-GUARD-FP", "Q-CAST-PUR" to "Q-CAST-PUR")
+    val nameMapping = mapOf("SL" to "SLMP", "Online" to "Q-CAST", "Greedy_H" to "Greedy", "QG" to "Q-GUARD", "QG-FP" to "Q-GUARD-FP", "Q-CAST-PUR" to "Q-CAST-PUR", "QG-WS" to "Q-GUARD-WS")
     // val names = listOf("Online", "SL", "Greedy_H", "CR", "BotCap", "SumDist", "MultiMetric")
-    val names = listOf("Online", "QG", "QG-FP", "Q-CAST-PUR")
+    val names = listOf("Online", "QG", "QG-FP", "Q-CAST-PUR", "QG-WS")
     
     (1..3).forEach { mode ->
       var (d, n, p, q, k, nsd) = referenceSetting
@@ -324,7 +324,13 @@ class Plot {
     val results = names.map { name ->
       pList.sorted().map { p ->
         val rlist = topoRange.flatMap { topoIdx ->
-          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name, fth) + ".txt")
+          // parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name, fth) + ".txt")
+          val fn = "dist/" + id(n, topoIdx, q, k, p, d, nsd, name, fth) + ".txt"
+          if (!File(fn).exists()) {
+            println("MISSING: $fn")
+            return@flatMap emptyList<Record>()
+          }
+          parseLog(fn)
         }
         
         rlist.map { it.majorPaths.sumByDouble { it.succ.toDouble() } }.average()
@@ -1360,7 +1366,7 @@ class Plot {
       // p.rp2Cdf_nsd()
       // p.rp2Cdf_n()
       // p.rp2N()
-      p.rp2Nsd()
+      // p.rp2Nsd()
       
       p.plot()
     }

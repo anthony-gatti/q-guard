@@ -15,12 +15,12 @@ import kotlin.math.pow
 
 fun sim() {
   val topos = (nList * dList).map { (n, d) ->
-    n to d to Topo.generate(n, 0.9, 5, 0.1, d)
+    n to d to Topo.generate(n, 0.9, 5, 0.1, d, lengthSigma = 0.35)
   }.toMap()
   
   val alphaStore = ReducibleLazyEvaluation<Pair<Topo, Double>, Double>({ (topo, p) ->
     dynSearch(1E-10, 1.0, p, { x ->
-      topo.links.map { Math.E.pow(-x * +(it.n1.loc - it.n2.loc)) }.sum() / topo.links.size
+      topo.links.map { Math.E.pow(-x * it.l) }.sum() / topo.links.size
     }, false, 0.001)
   })
   val repeat = 1000
@@ -141,7 +141,8 @@ fun sim() {
             OnlineAlgorithm(Topo(topo), allowRecoveryPaths = true).apply { setDefaultThreshold(FTH) },
             Q_CAST_PUR(Topo(topo), allowRecoveryPaths = true).apply { setDefaultThreshold(FTH) },
             Q_GUARD(Topo(topo), allowRecoveryPaths = true).apply { setDefaultThreshold(FTH) },
-            Q_GUARD_FP(Topo(topo), allowRecoveryPaths = true).apply { setDefaultThreshold(FTH) }
+            Q_GUARD_FP(Topo(topo), allowRecoveryPaths = true).apply { setDefaultThreshold(FTH) },
+            Q_GUARD_WS(Topo(topo), allowRecoveryPaths = true).apply { setDefaultThreshold(FTH) }
           )
 
           algorithms.filter { solver ->
@@ -201,7 +202,7 @@ fun simpleTest() {
     
     while (true) {
       val topo = Topo(netTopology.toString().lines().mapIndexed { i, line -> if (i == 1) alpha.toString() else line }.joinToString("\n"))
-      val avgP = topo.links.map { Math.E.pow(-alpha * +(it.n1.loc - it.n2.loc)) }.sum() / topo.links.size
+      val avgP = topo.links.map { Math.E.pow(-alpha * it.l) }.sum() / topo.links.size
       
       if (Math.abs(avgP - expectedAvgP) / expectedAvgP < 0.001) break
       else if (avgP > expectedAvgP) {

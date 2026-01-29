@@ -27,7 +27,7 @@ open class Q_GUARD(
         reqFth[key] = fth
     }
 
-    private fun edgeKey(u: Node, v: Node): Pair<Int, Int> {
+    protected fun edgeKey(u: Node, v: Node): Pair<Int, Int> {
         val a = u.id
         val b = v.id
         return if (a <= b) a to b else b to a
@@ -38,13 +38,13 @@ open class Q_GUARD(
         return reqFth[key] ?: defaultFth
     }
 
-    private data class PathExgResult(
+    protected data class PathExgResult(
         val exg: Double,
         val feasible: Boolean
     )
 
     // computes exg for a given path
-    private fun computeExgForPath(
+    protected fun computeExgForPath(
         path: List<Node>,
         width: Int,
         fth: Double,
@@ -63,13 +63,10 @@ open class Q_GUARD(
             defaultPerHopTarget ?: Fidelity.perHopTargetF(fth, hops)
 
         val hopInfo = topo.perHopFreshF(path)
-        var totalPurCostExg = 0
+        var totalExtraPairCost = 0L
         var exgFeasible = true
 
-        val perHopBudget = (width - 1).coerceAtLeast(0)
-
-        var availabilitySum = 0.0
-        var availabilityCount = 0
+        var availabilityMin = 1.0
 
         for ((edge, _, F0) in hopInfo) {
             val u = edge.n1
@@ -78,33 +75,39 @@ open class Q_GUARD(
 
             val targetF = overrideTargets?.get(key) ?: perHopTargetDefault
 
-            val rawCost = PurificationCostTable.minCostToReach(F0, targetF)
-            // Analytic feasibility
-            if (rawCost == Int.MAX_VALUE || rawCost > perHopBudget) {
+            val rounds = PurificationCostTable.minCostToReach(F0, targetF)
+
+            // If the target is unreachable under the Werner + symmetric-BBPSSW model.
+            if (rounds == Int.MAX_VALUE) {
                 exgFeasible = false
                 break
             }
 
-            totalPurCostExg += rawCost
+            // Symmetric purification needs 2^rounds raw pairs to produce 1 purified pair.
+            // Analytic feasibility: can't consume more raw pairs than the per-hop cap (width).
+            val requiredPairs: Long = when {
+                rounds <= 0 -> 1L
+                rounds >= 62 -> Long.MAX_VALUE
+                else -> 1L shl rounds
+            }
 
-            // Realized availability on this hop
-            val requiredPairs =
-                if (rawCost <= 0) 1 else (1 shl rawCost).coerceAtMost(1 shl 30)
+            if (requiredPairs > width.toLong()) {
+                exgFeasible = false
+                break
+            }
+
+            // EXG "cost" is extra raw pairs consumed beyond the one delivered pair.
+            totalExtraPairCost += (requiredPairs - 1L)
 
             val availablePairs = topo.linksBetween(u, v)
                 .count { link ->
                     link.entangled && link.notSwapped() && !link.utilized
                 }
 
-            val ratio =
-                if (requiredPairs > 0)
-                    (availablePairs.toDouble() / requiredPairs.toDouble())
-                        .coerceIn(0.0, 1.0)
-                else
-                    1.0
+            val ratio = (availablePairs.toDouble() / requiredPairs.toDouble())
+                .coerceIn(0.0, 1.0)
 
-            availabilitySum += ratio
-            availabilityCount += 1
+            if (ratio < availabilityMin) availabilityMin = ratio
         }
 
         if (!exgFeasible) {
@@ -119,17 +122,11 @@ open class Q_GUARD(
 
         val baseExg = run {
             val num = width.toDouble() * qPath
-            val denom = 1.0 + totalPurCostExg.toDouble()
+            val denom = 1.0 + totalExtraPairCost.toDouble()
             if (denom > 0.0) num / denom else 0.0
         }
 
-        val availabilityFactor =
-            if (availabilityCount > 0)
-                (availabilitySum / availabilityCount).coerceIn(0.0, 1.0)
-            else
-                1.0
-
-        val exg = baseExg * availabilityFactor
+        val exg = baseExg * availabilityMin
 
         return PathExgResult(
             exg = exg,
@@ -138,7 +135,7 @@ open class Q_GUARD(
     }
 
     // computes a uniform per-hop fidelity target for each detour of each recovery path
-    private fun computeDetourPerHopTargets(
+    protected fun computeDetourPerHopTargets(
         recoveryPaths: List<PickedPath>,
         rpToSegmentRange: Map<Path, Pair<Int, Int>>,
         wTh: Double,
@@ -162,7 +159,7 @@ open class Q_GUARD(
     }
 
     // returns fidelities that are in newF but not oldF
-    private fun newFidelitiesOnly(
+    protected fun newFidelitiesOnly(
         oldF: List<Double>,
         newF: List<Double>,
         scale: Double = 1e12
@@ -185,7 +182,7 @@ open class Q_GUARD(
     }
 
     // Build per-edge purification targets for a given path
-    private fun buildChosenPerEdgeTargets(
+    protected fun buildChosenPerEdgeTargets(
         chosenPath: List<Node>,
         pickedRps: Set<Path>,
         detourPerHopTarget: Map<Path, Double>,
@@ -211,7 +208,7 @@ open class Q_GUARD(
 
     // Purification along chosen path
     // keep purifying until fewer than 2 entg pairs remain, or best available pair meets target fid
-    private fun maybePurifyAlongPath(
+    protected fun maybePurifyAlongPath(
         chosenPath: List<Node>,
         chosenPerEdgeTarget: Map<Pair<Int, Int>, Double>,
         perHopTargetMajor: Double
@@ -237,7 +234,7 @@ open class Q_GUARD(
     }
 
     // ensure all hops on chosen path have at least one pair that meets target
-    private fun allHopsMeetTargets(
+    protected fun allHopsMeetTargets(
         chosenPath: List<Node>,
         chosenPerEdgeTarget: Map<Pair<Int, Int>, Double>,
         perHopTargetMajor: Double

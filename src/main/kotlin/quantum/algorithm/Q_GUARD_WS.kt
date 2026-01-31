@@ -1,11 +1,9 @@
 package quantum.algorithm
 
 import quantum.Fidelity
-import quantum.PurificationCostTable
 import quantum.topo.*
 import utils.ReducibleLazyEvaluation
 import utils.also
-import utils.pmap
 import utils.require
 import java.util.LinkedList
 import java.util.PriorityQueue
@@ -21,6 +19,133 @@ class Q_GUARD_WS(
 
     // ---- helpers ----
 
+    private fun fidelityAfterRoundsIdeal(F0: Double, rounds: Int): Double {
+        var f = F0
+        var r = rounds
+        while (r > 0) {
+            val (fp, _) = Fidelity.purifyWernerOnce(f, f)
+            if (fp <= f + 1e-12) break  // hit fixed point
+            f = fp
+            r--
+        }
+        return f.coerceIn(0.25, 1.0)
+    }
+
+    private fun effortRoundsForPath(path: Path, width: Int, fthEndToEnd: Double): IntArray? {
+        val hops = path.size - 1
+        if (hops <= 0) return null
+        if (width <= 0) return null
+
+        val fth = fthEndToEnd.coerceAtLeast(0.25)
+        val wTarget = Fidelity.wFromF(fth).coerceAtLeast(0.0)
+
+        // Max rounds allowed by width: need 2^rounds pairs on a hop
+        var Rmax = 0
+        while ((1 shl (Rmax + 1)) <= width && Rmax < 30) Rmax++
+
+        // Topology-known estimated F0 per hop (deterministic)
+        val hopPairs = path.dropLast(1).zip(path.drop(1))
+        val F0s = hopPairs.map { (u, v) ->
+            val link = topo.linksBetween(u, v).first()
+            Fidelity.freshLinkFidelity(link.tau)
+        }
+
+        // Precompute wAfter[hop][r]
+        val wAfter = Array(hops) { DoubleArray(Rmax + 1) }
+        for (i in 0 until hops) {
+            for (r in 0..Rmax) {
+                val f = fidelityAfterRoundsIdeal(F0s[i], r)
+                wAfter[i][r] = Fidelity.wFromF(f).coerceAtLeast(0.0)
+            }
+        }
+
+        // Find minimal uniform max-rounds R such that product wAfter[i][R] >= wTarget
+        fun productWAtR(R: Int): Double {
+            var prod = 1.0
+            for (i in 0 until hops) {
+                prod *= wAfter[i][R]
+            }
+            return prod
+        }
+
+        var R = 0
+        while (R <= Rmax && productWAtR(R) + 1e-15 < wTarget) R++
+        if (R > Rmax) return null  // infeasible under width cap
+
+        // distribute effort downward while keeping product >= wTarget
+        val rounds = IntArray(hops) { R }
+
+        fun productWCurrent(): Double {
+            var prod = 1.0
+            for (i in 0 until hops) prod *= wAfter[i][rounds[i]]
+            return prod
+        }
+
+        var curProd = productWCurrent()
+
+        // Greedy: try to decrement one round at a time, choose smallest harm first
+        while (true) {
+            var bestIdx = -1
+            var bestNewProd = 0.0
+            var bestDrop = Double.POSITIVE_INFINITY
+
+            for (i in 0 until hops) {
+                val ri = rounds[i]
+                if (ri <= 0) continue
+                val wi = wAfter[i][ri].coerceAtLeast(1e-18)
+                val wPrev = wAfter[i][ri - 1].coerceAtLeast(1e-18)
+
+                val newProd = (curProd / wi) * wPrev
+                if (newProd + 1e-15 < wTarget) continue
+
+                // Choose the decrement that drops the product the least
+                val drop = wi - wPrev
+                if (drop < bestDrop) {
+                    bestDrop = drop
+                    bestIdx = i
+                    bestNewProd = newProd
+                }
+            }
+
+            if (bestIdx < 0) break
+            rounds[bestIdx] -= 1
+            curProd = bestNewProd
+        }
+
+        return rounds
+    }
+
+    private fun perEdgeTargetsWeighted(path: Path, width: Int, fthEndToEnd: Double): Map<Pair<Int, Int>, Double> {
+        val hops = path.size - 1
+        if (hops <= 0) return emptyMap()
+
+        val rounds = effortRoundsForPath(path, width, fthEndToEnd) ?: return emptyMap()
+
+        val out = mutableMapOf<Pair<Int, Int>, Double>()
+        val hopPairs = path.dropLast(1).zip(path.drop(1))
+        for (i in 0 until hops) {
+            val (u, v) = hopPairs[i]
+            val link = topo.linksBetween(u, v).first()
+            val F0 = Fidelity.freshLinkFidelity(link.tau)
+            val target = fidelityAfterRoundsIdeal(F0, rounds[i])
+            out[edgeKey(u, v)] = target
+        }
+        return out
+    }
+
+    private fun predictedEndToEndFromCurrentBest(path: Path): Double {
+        if (path.size < 2) return 0.0
+        var wProd = 1.0
+        val hopPairs = path.dropLast(1).zip(path.drop(1))
+        for ((u, v) in hopPairs) {
+            val best = topo.linksBetween(u, v)
+                .filter { it.entangled && it.assigned && it.notSwapped() && !it.utilized }
+                .maxBy { it.fidelity } ?: return 0.0
+            wProd *= Fidelity.wFromF(best.fidelity).coerceAtLeast(0.0)
+        }
+        return Fidelity.fFromW(wProd)
+    }
+
     private fun hopLengths(path: Path): List<Double> {
         // Each hop corresponds to a (u,v) edge; parallel links are assumed to share the same length.
         return path.dropLast(1).zip(path.drop(1)).map { (u, v) ->
@@ -28,74 +153,36 @@ class Q_GUARD_WS(
         }
     }
 
-    private fun perEdgeTargetsWeighted(path: Path, fthEndToEnd: Double): Map<Pair<Int, Int>, Double> {
-        val lens = hopLengths(path)
-        val targets = Fidelity.perHopWeightedTargetsF(fthEndToEnd.coerceAtLeast(0.25), lens)
-
-        val out = mutableMapOf<Pair<Int, Int>, Double>()
-        path.dropLast(1).zip(path.drop(1)).zip(targets).forEach { (uv, t) ->
-            val (u, v) = uv
-            out[edgeKey(u, v)] = t
-        }
-        return out
-    }
-
     private fun predictedYieldWeighted(path: Path, width: Int, fthEndToEnd: Double): Double {
-        val hops = path.size - 1
-        if (hops <= 0) return 0.0
-
-        val lens = hopLengths(path)
-        val perHopTargets = Fidelity.perHopWeightedTargetsF(fthEndToEnd.coerceAtLeast(0.25), lens)
-        val hopInfo = topo.perHopFreshF(path)   // (edge, tau, F0)
-
-        var bottleneck = 1.0
-        for ((hop, targetF) in hopInfo.zip(perHopTargets)) {
-            val (edge, tau, F0) = hop
-            val rounds = PurificationCostTable.minCostToReach(F0, targetF)
-            if (rounds == Int.MAX_VALUE) return 0.0
-            if (rounds >= 31) return 0.0
-            val required = 1 shl rounds
-            if (required > width) return 0.0
-            val hopYield = 1.0 / required.toDouble()
-            if (hopYield < bottleneck) bottleneck = hopYield
-        }
-        return bottleneck
+        val rounds = effortRoundsForPath(path, width, fthEndToEnd) ?: return 0.0
+        var maxR = 0
+        for (r in rounds) if (r > maxR) maxR = r
+        if (maxR >= 31) return 0.0
+        val required = 1 shl maxR
+        if (required > width) return 0.0
+        return 1.0 / required.toDouble()
     }
 
     private fun predictedYieldForBudgetWeighted(path: Path, width: Int, wBudget: Double): Double {
-        val hops = path.size - 1
-        if (hops <= 0) return 0.0
         if (wBudget <= 0.0) return 0.0
-
-        // Convert the segment Werner budget into an equivalent end-to-end fidelity threshold,
-        // then distribute it across hops with length weights.
         val fSeg = Fidelity.fFromW(wBudget).coerceAtLeast(0.25)
-        val lens = hopLengths(path)
-        val perHopTargets = Fidelity.perHopWeightedTargetsF(fSeg, lens)
-        val hopInfo = topo.perHopFreshF(path)
+        val rounds = effortRoundsForPath(path, width, fSeg) ?: return 0.0
 
-        var bottleneck = 1.0
-        for ((hop, targetF) in hopInfo.zip(perHopTargets)) {
-            val (edge, tau, F0) = hop
-            val rounds = PurificationCostTable.minCostToReach(F0, targetF)
-            if (rounds == Int.MAX_VALUE) return 0.0
-            if (rounds >= 31) return 0.0
-            val required = 1 shl rounds
-            if (required > width) return 0.0
-            val hopYield = 1.0 / required.toDouble()
-            if (hopYield < bottleneck) bottleneck = hopYield
-        }
-        return bottleneck
+        var maxR = 0
+        for (r in rounds) if (r > maxR) maxR = r
+        if (maxR >= 31) return 0.0
+        val required = 1 shl maxR
+        if (required > width) return 0.0
+        return 1.0 / required.toDouble()
     }
 
-    // ---- P2 changes (EXG major selection + recovery budgets) ----
+    // EXG major selection + recovery budgets
 
     override fun scoreCandidate(path: Path, width: Int, oldP: DoubleArray): Double {
         val base = topo.e(path, width, oldP)
         if (base <= 0.0) return 0.0
 
-        // Fidelity thresholds < 0.25 are not meaningful in the Werner model.
-        // Treat them as "no fidelity constraint" (0.25) to avoid NaNs.
+        // Fidelity thresholds < 0.25  not meaningful in the Werner model
         val fth = fthFor(path.first(), path.last()).coerceAtLeast(0.25)
         val y = predictedYieldWeighted(path, width, fth)
         return if (y > 0.0) base * y else 0.0
@@ -143,7 +230,7 @@ class Q_GUARD_WS(
                     val segSrc = majorPath[i]
                     val segDst = majorPath[i + l]
 
-                    // Segment Werner budget split by *physical* segment length.
+                    // Segment Werner budget split by physical segment length
                     val Lseg = majorLens.subList(i, i + l).sum()
                     val wSeg = wTh.pow(Lseg / Lmajor)
 
@@ -235,8 +322,6 @@ class Q_GUARD_WS(
         return candidate
     }
 
-    // ---- P4 changes (weighted split targets) ----
-
     override fun P4() {
         majorPaths.forEach { pathWithWidth ->
             val (_, width, majorPath) = pathWithWidth
@@ -247,7 +332,6 @@ class Q_GUARD_WS(
             val hopsMajor = majorPath.size - 1
             val FTH = fthFor(src, dst).coerceAtLeast(0.25)
 
-            // Fallback (should rarely be used if target maps are complete)
             val perHopTargetFallback = if (hopsMajor > 0) Fidelity.perHopTargetF(FTH, hopsMajor) else FTH
 
             val wTh = Fidelity.wFromF(FTH)
@@ -255,7 +339,7 @@ class Q_GUARD_WS(
             val Lmajor = majorLens.sum().coerceAtLeast(1e-12)
 
             // Per-edge targets for the major path using length-weighted split
-            val majorEdgeTargets = perEdgeTargetsWeighted(majorPath, FTH)
+            val majorEdgeTargets = perEdgeTargetsWeighted(majorPath, width, FTH)
 
             val recoveryPaths = this.recoveryPaths[pathWithWidth]!!
                 .sortedBy { tup -> tup.third.size * 10000 + majorPath.indexOf(tup.third.first()) }
@@ -292,7 +376,9 @@ class Q_GUARD_WS(
                 val Lseg = majorLens.subList(iStart, iEnd).sum()
                 val wSeg = wTh.pow(Lseg / Lmajor)
                 val fSeg = Fidelity.fFromW(wSeg)
-                detourEdgeTargets[detourPath] = perEdgeTargetsWeighted(detourPath, fSeg)
+                val detourWidth = topo.widthPhase4(detourPath).coerceAtLeast(1)
+                val effectiveDetourWidth = minOf(width, detourWidth)
+                detourEdgeTargets[detourPath] = perEdgeTargetsWeighted(detourPath, effectiveDetourWidth, fSeg)
             }
 
             val edges = (0..majorPath.size - 2).zip(1..majorPath.size - 1)
@@ -302,7 +388,7 @@ class Q_GUARD_WS(
                 .toMutableMap()
 
             for (i in 1..width) {
-                // treat a width-w major path as w independent "threads" and repair separately
+                // treat a width-w major path as w independent threads and repair separately
                 val brokenEdges = java.util.LinkedList(
                     edges.filter { (i1, i2) ->
                         val (n1, n2) = majorPath[i1] to majorPath[i2]
@@ -473,7 +559,9 @@ class Q_GUARD_WS(
                 // Runtime purification on the chosen path
                 maybePurifyAlongPath(chosenPath, chosenPerEdgeTarget, perHopTargetFallback)
 
-                if (!allHopsMeetTargets(chosenPath, chosenPerEdgeTarget, perHopTargetFallback)) continue
+                // End-to-end gate using actual current best hop pairs
+                val estE2E = predictedEndToEndFromCurrentBest(chosenPath)
+                if (estE2E + 1e-12 < FTH) continue
 
                 // swaps along chosen path
                 chosenPath

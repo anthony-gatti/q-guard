@@ -217,7 +217,8 @@ open class Q_GUARD(
 
         val hopsOnChosen = chosenPath.dropLast(1).zip(chosenPath.drop(1))
         for ((u, v) in hopsOnChosen) {
-            val targetF = chosenPerEdgeTarget[edgeKey(u, v)] ?: perHopTargetMajor
+            val targetFRaw = chosenPerEdgeTarget[edgeKey(u, v)] ?: perHopTargetMajor
+            val targetF = minOf(targetFRaw, perHopTargetMajor)
 
             while (true) {
                 val pool = topo.linksBetween(u, v)

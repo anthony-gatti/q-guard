@@ -73,15 +73,24 @@ object Fidelity {
     }
 
     // BBPSSW for Werner inputs: returns (F', p_succ)
+    // BBPSSW for Werner inputs: returns (F', p_succ)
     fun purifyWernerOnce(Fa: Double, Fb: Double): Pair<Double, Double> {
-        // Symmetric case often uses Fa==Fb; we keep general form
-        val a = Fa; val b = Fb
-        val num = a*a + ((1 - a)*(1 - b))/9.0
-        val den = a*a + (a*(1 - b) + (1 - a)*b)/3.0 + 5.0*((1 - a)*(1 - b))/9.0
-        val Fp  = if (den > 0) (num / den).coerceIn(0.25, 1.0) else 0.25
-        val ps  = den.coerceIn(0.0, 1.0)   // keep as a probability
+        val a = Fa.coerceIn(0.25, 1.0)
+        val b = Fb.coerceIn(0.25, 1.0)
+
+        val da = 1.0 - a
+        val db = 1.0 - b
+
+        // General BBPSSW recurrence for Werner states:
+        // F' = (ab + (1-a)(1-b)/9) / (ab + (a(1-b)+(1-a)b)/3 + 5(1-a)(1-b)/9)
+        val num = a * b + (da * db) / 9.0
+        val den = a * b + (a * db + da * b) / 3.0 + 5.0 * (da * db) / 9.0
+
+        val Fp = if (den > 0.0) (num / den).coerceIn(0.25, 1.0) else 0.25
+        val ps = den.coerceIn(0.0, 1.0)
         return Fp to ps
     }
+
 
     const val DEFAULT_TAU: Double = 7.0
     fun freshLinkFidelityDefault(): Double = freshLinkFidelity(DEFAULT_TAU)

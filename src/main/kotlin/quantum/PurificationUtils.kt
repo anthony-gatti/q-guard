@@ -31,31 +31,85 @@ fun tryPurifyOnEdge(
         .filter { it.entangled && it.notSwapped() && !it.utilized }
         .sortedBy { it.id }
         .toMutableList()
+
     if (pool.size < 2) return PurifyResult(false, 0.0, 0.0, 0, 0, 0, emptyList())
 
     var attempts = 0
     var pairsConsumed = 0
     var costUnits = 0
     val probs = mutableListOf<Double>()
-    var Fbefore = pool.maxBy { it.fidelity }?.fidelity ?: 0.0
+    val Fbefore = pool.maxBy { it.fidelity }?.fidelity ?: 0.0
+
+    val eps = 1e-12
 
     while (pool.size >= 2) {
+        // Sort descending so pool[0] is the current best
         pool.sortByDescending { it.fidelity }
-        val a = pool.removeAt(0)
-        val b = pool.removeAt(0)
 
-        val (Fp, ps) = Fidelity.purifyWernerOnce(a.fidelity, b.fidelity)
+        // Consider only top K to keep this cheap
+        val K = minOf(pool.size, 8)
+
+        var bestI = -1
+        var bestJ = -1
+        var bestScore = Double.NEGATIVE_INFINITY
+        var bestFp = 0.0
+        var bestPs = 0.0
+
+        // Search for the best safe pair among top K
+        for (i in 0 until K) {
+            for (j in i + 1 until K) {
+                val fi = pool[i].fidelity
+                val fj = pool[j].fidelity
+                val (Fp, ps) = Fidelity.purifyWernerOnce(fi, fj)
+
+                // safe = don't reduce the better input (fi >= fj since sorted)
+                if (Fp + eps < fi) continue
+
+                // Score:
+                //   - If this could reach targetF on success, prefer higher ps strongly.
+                //   - Otherwise, prefer higher expected improvement per expected pairs consumed.
+                val expectedPairsConsumed = 2.0 - ps  // success consumes 1, failure consumes 2
+                val score =
+                    if (Fp + eps >= targetF) {
+                        1e6 * ps / expectedPairsConsumed
+                    } else {
+                        (ps * (Fp - fi)) / expectedPairsConsumed
+                    }
+
+                if (score > bestScore) {
+                    bestScore = score
+                    bestI = i
+                    bestJ = j
+                    bestFp = Fp
+                    bestPs = ps
+                }
+            }
+        }
+
+        // No safe purification move exists
+        if (bestI < 0) break
+
+        // Remove chosen links from pool
+        val j = bestJ
+        val i = bestI
+        val b = pool.removeAt(j)
+        val a = pool.removeAt(i)
+
+        val Fp = bestFp
+        val ps = bestPs
+
         probs += ps
         attempts += 1
         costUnits += costPerAttempt
 
         val pass = deterministic || (randGen.nextDouble() < ps)
         if (pass) {
-            // Success: keep improved 'a', consume 'b'
+            // Success: keep improved a, consume b
             a.fidelity = Fp
             b.utilize()
             pairsConsumed += 1
-            if (Fp + 1e-12 >= targetF) {
+
+            if (Fp + eps >= targetF) {
                 pool.add(a)
                 return PurifyResult(true, Fbefore, Fp, attempts, pairsConsumed, costUnits, probs)
             } else {
@@ -63,9 +117,9 @@ fun tryPurifyOnEdge(
             }
         } else {
             // Failure: consume both
-            a.utilize(); b.utilize()
+            a.utilize()
+            b.utilize()
             pairsConsumed += 2
-            // keep going if more pairs remain
         }
     }
 

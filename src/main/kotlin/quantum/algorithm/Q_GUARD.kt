@@ -229,7 +229,8 @@ open class Q_GUARD(
                 if (pool.size < 2) break
                 if (bestF + 1e-12 >= targetF) break
 
-                tryPurifyOnEdge(topo, u, v, targetF, PUR_DETERMINISTIC, C_PUR)
+                val res = tryPurifyOnEdge(topo, u, v, targetF, PUR_DETERMINISTIC, C_PUR)
+                if (res.pairsConsumed == 0) break
             }
         }
     }

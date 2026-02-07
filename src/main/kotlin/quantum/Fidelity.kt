@@ -73,7 +73,6 @@ object Fidelity {
     }
 
     // BBPSSW for Werner inputs: returns (F', p_succ)
-    // BBPSSW for Werner inputs: returns (F', p_succ)
     fun purifyWernerOnce(Fa: Double, Fb: Double): Pair<Double, Double> {
         val a = Fa.coerceIn(0.25, 1.0)
         val b = Fb.coerceIn(0.25, 1.0)

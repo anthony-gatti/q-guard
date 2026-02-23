@@ -14,9 +14,16 @@ import javax.swing.WindowConstants
 import kotlin.math.pow
 
 fun sim() {
-  val topos = (nList * dList).map { (n, d) ->
-    n to d to Topo.generate(n, 0.9, 5, 0.1, d, lengthSigma = 0.35)
+  // val topos = (nList * dList).map { (n, d) ->
+  //   n to d to Topo.generate(n, 0.9, 5, 0.1, d, lengthSigma = 0.35)
+  // }.toMap()
+  val topos = topoRange.flatMap { idx ->
+    randGen.setSeed(19900111L + idx * 7919L)
+    (nList * dList).map { (n, d) ->
+        Triple(n, d, idx) to Topo.generate(n, 0.9, 5, 0.1, d, lengthSigma = 0.35)
+    }
   }.toMap()
+
   
   val alphaStore = ReducibleLazyEvaluation<Pair<Topo, Double>, Double>({ (topo, p) ->
     dynSearch(1E-10, 1.0, p, { x ->
@@ -35,10 +42,13 @@ fun sim() {
 
   
   topoRange.forEach { topoIdx ->
+    // val executor = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors())
     val executor = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors())
+    randGen.setSeed(19900111L + topoIdx * 13L)
     
     allAvailableSettings.forEach { (d, n, p, q, k, nsd) ->
-      val topo = topos[n to d]!!
+      // val topo = topos[n to d]!!
+      val topo = topos[Triple(n, d, topoIdx)]!!
       val alpha = alphaStore[topo to p]
       
       val testSet = (1..repeat).map {
@@ -62,9 +72,9 @@ fun sim() {
             Q_GUARD(Topo(topo), allowRecoveryPaths = true).apply {
               setDefaultThreshold(FTH)
             },
-            Q_GUARD_FP(Topo(topo), allowRecoveryPaths = true).apply {
-              setDefaultThreshold(FTH)
-            },
+            // Q_GUARD_FP(Topo(topo), allowRecoveryPaths = true).apply {
+            //   setDefaultThreshold(FTH)
+            // },
             Q_GUARD_WS(Topo(topo), allowRecoveryPaths = true).apply {
               setDefaultThreshold(FTH)
             }

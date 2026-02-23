@@ -18,7 +18,7 @@ val kList = listOf(3, 6, 0, 10000)
 val qList = listOf(0.9, 0.8, 0.85, 0.95, 1.0)
 val pList = listOf(0.7, 0.5, 0.6, 0.8, 0.9, 1.0)
 val nsdList = (1..10).toList()
-val topoRange = (1..1).toList()
+val topoRange = (1..5).toList()
 val fthList = listOf(
   0.60, 0.65, 0.70, 0.75, 0.80, 0.85, 0.90, 0.95
 )

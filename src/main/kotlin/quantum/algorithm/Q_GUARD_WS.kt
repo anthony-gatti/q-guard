@@ -231,8 +231,9 @@ class Q_GUARD_WS(
                     val segDst = majorPath[i + l]
 
                     // Segment Werner budget split by physical segment length
-                    val Lseg = majorLens.subList(i, i + l).sum()
-                    val wSeg = wTh.pow(Lseg / Lmajor)
+                    val depSeg = majorTaus.subList(i, i + l).sumOf { 1.0 / it }
+                    val depTotal = majorTaus.sumOf { 1.0 / it }
+                    val wSeg = wTh.pow(depSeg / depTotal)
 
                     val pick = generateMajorWithBudget(segSrc, segDst, wSeg)
                     if (pick != null && pick.first > 0.0) {

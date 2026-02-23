@@ -95,11 +95,12 @@ class Topo(input: String) {
 
       val nm = toks[2].toInt()
       val lOverride = if (toks.size >= 4) toks[3].toDouble() else +(n1.loc - n2.loc)
+      val tauOverride = if (toks.size >= 5) toks[4].toDouble() else (TAU_MAX - TAU_SLOPE * lOverride).coerceIn(TAU_MIN, TAU_MAX)
 
       require({ n1.id < n2.id })
 
       (1..nm).forEach {
-        val link = Link(this, n1, n2, lOverride)
+        val link = Link(this, n1, n2, lOverride, tauOverride)
         links.add(link)
         n1.links.add(link)
         n2.links.add(link)
@@ -135,7 +136,8 @@ ${links.groupBy { it.n1 to it.n2 }.map { entry ->
   val e = entry.key
   val bundle = entry.value
   val l = bundle.first().l
-  "${e.n1.id} ${e.n2.id} ${bundle.size} ${"%.6f".format(Locale.US, l)}"
+  val tau = bundle.first().tau
+  "${e.n1.id} ${e.n2.id} ${bundle.size} ${"%.6f".format(Locale.US, l)} ${"%.6f".format(Locale.US, tau)}"
 }.joinToString("\n")}
 """.trim().trimIndent()
   
@@ -599,6 +601,9 @@ ${links.groupBy { it.n1 to it.n2 }.map { entry ->
   }
   
   companion object {
+    const val TAU_MAX: Double = 10.0
+    const val TAU_SLOPE: Double = 0.05
+    const val TAU_MIN: Double = 4.0
     val hopLimit = 15
     
     val routeStorage = ReducibleLazyEvaluation<String, MutableList<List<Int>>>({ mutableListOf() }, { it }, { k, v -> v })
@@ -630,15 +635,20 @@ ${links.groupBy { it.n1 to it.n2 }.map { entry ->
       a: Double,
       degree: Int,
       candidateRadiusFactor: Double = 2.0, // old behavior
-      lengthSigma: Double = 0.0,           // 0.0 => no variability (old behavior)
+      lengthSigma: Double = 0.0,           // 0.0 => no variability
       lengthClampMin: Double = 0.6,
-      lengthClampMax: Double = 1.8
+      lengthClampMax: Double = 1.8,
+      tauMean: Double = 7.0,
+      tauSigma: Double = 1.5,       // heterogeneity control
+      tauMin: Double = 4.0,
+      tauMax: Double = 10.0
     ): Topo {
       val alpha: Double = a
       val nodeLocs = mutableListOf<DoubleArray>()
       val links = mutableListOf<Pair<Int, Int>>()
 
       val lenMap = HashMap<Pair<Int, Int>, Double>()
+      val tauMap = HashMap<Pair<Int, Int>, Double>()
 
       fun edgeKey(u: Int, v: Int): Pair<Int, Int> = if (u < v) (u to v) else (v to u)
 
@@ -656,6 +666,17 @@ ${links.groupBy { it.n1 to it.n2 }.map { entry ->
           val d = +(nodeLocs[u] - nodeLocs[v])
           d * sampleFactor()
         }
+      }
+
+      fun sampleTau(): Double {
+        if (tauSigma <= 0.0) return tauMean
+        val z = randGen.nextGaussian()
+        return (tauMean + tauSigma * z).coerceIn(tauMin, tauMax)
+      }
+
+      fun edgeTau(u: Int, v: Int): Double {
+          val key = edgeKey(u, v)
+          return tauMap.getOrPut(key) { sampleTau() }
       }
       
       val controllingD = sqrt(edgeLen * edgeLen / n)
@@ -730,7 +751,8 @@ ${links.map {
   val v = it.second
   val m = (randGen.nextDouble() * 8 + 6).toInt()
   val l = physLen(u, v)
-  "${u} ${v} $m ${"%.6f".format(Locale.US, l)}"
+  val tau = edgeTau(u, v)
+  "${u} ${v} $m ${"%.6f".format(Locale.US, l)} ${"%.6f".format(Locale.US, tau)}"
 }.joinToString("\n")}
       """.trimIndent())
     }

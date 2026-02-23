@@ -7,17 +7,17 @@ import utils.padTo
 import utils.require
 import kotlin.math.pow
 
-class Link(val topo: Topo, val n1: Node, val n2: Node, val l: Double, var entangled: Boolean = false, var s1: Boolean = false, var s2: Boolean = false, val id: Int = cnt++) {
+class Link(val topo: Topo, val n1: Node, val n2: Node, val l: Double, val tau: Double, var entangled: Boolean = false, var s1: Boolean = false, var s2: Boolean = false, val id: Int = cnt++) {
   companion object {
     var cnt = 0
-    const val TAU_MAX: Double = 10.0
-    const val TAU_SLOPE: Double = 0.05
-    const val TAU_MIN: Double = 4.0
+    // const val TAU_MAX: Double = 10.0
+    // const val TAU_SLOPE: Double = 0.05
+    // const val TAU_MIN: Double = 4.0
   }
 
 
   var fidelity: Double = 1.0
-  val tau: Double = (TAU_MAX - TAU_SLOPE * l).coerceIn(TAU_MIN, TAU_MAX)
+  // val tau: Double = (TAU_MAX - TAU_SLOPE * l).coerceIn(TAU_MIN, TAU_MAX)
 
   
   fun theOtherEndOf(n: Node) = if (n1 == n) n2 else if (n2 == n) n1 else throw Exception("No such node")

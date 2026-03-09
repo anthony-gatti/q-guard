@@ -638,10 +638,8 @@ ${links.groupBy { it.n1 to it.n2 }.map { entry ->
       lengthSigma: Double = 0.0,           // 0.0 => no variability
       lengthClampMin: Double = 0.6,
       lengthClampMax: Double = 1.8,
-      tauMean: Double = 7.0,
-      tauSigma: Double = 1.5,       // heterogeneity control
-      tauMin: Double = 4.0,
-      tauMax: Double = 10.0
+      tauMean: Double = 9.5,
+      tauSigma: Double = 1.5 // heterogeneity control
     ): Topo {
       val alpha: Double = a
       val nodeLocs = mutableListOf<DoubleArray>()
@@ -671,7 +669,7 @@ ${links.groupBy { it.n1 to it.n2 }.map { entry ->
       fun sampleTau(): Double {
         if (tauSigma <= 0.0) return tauMean
         val z = randGen.nextGaussian()
-        return (tauMean + tauSigma * z).coerceIn(tauMin, tauMax)
+        return (tauMean + tauSigma * z).coerceAtLeast(0.5)
       }
 
       fun edgeTau(u: Int, v: Int): Double {

@@ -41,12 +41,12 @@ class Plot {
   
   val nameMapping = mapOf("SL" to "SLMP", "Online" to "Q-CAST", "Online-R" to "Q-CAST\\\\R", "CR" to "Q-PASS", "CR-R" to "Q-PASS\\\\R", "Greedy_H" to "Greedy", "QG" to "Q-GUARD", "QG-FP" to "Q-GUARD-FP", "Q-CAST-PUR" to "Q-CAST-PUR", "QG-WS" to "Q-GUARD-WS")
   // val names = listOf("Online", "SL", "Greedy_H", "CR")
-  val names = listOf("Online", "QG", "Q-CAST-PUR", "QG-WS")
+  val names = listOf("Online", "QG", "Q-CAST-PUR", "QG-FP", "QG-WS")
   
   fun throughputCdf() {
     val nameMapping = mapOf("SL" to "SLMP", "Online" to "Q-CAST", "Greedy_H" to "Greedy", "QG" to "Q-GUARD", "QG-FP" to "Q-GUARD-FP", "Q-CAST-PUR" to "Q-CAST-PUR", "QG-WS" to "Q-GUARD-WS")
     // val names = listOf("Online", "SL", "Greedy_H", "CR", "BotCap", "SumDist", "MultiMetric")
-    val names = listOf("Online", "QG", "Q-CAST-PUR", "QG-WS")
+    val names = listOf("Online", "QG", "Q-CAST-PUR", "QG-FP", "QG-WS")
     
     (1..3).forEach { mode ->
       var (d, n, p, q, k, nsd) = referenceSetting
@@ -804,49 +804,52 @@ class Plot {
   }
 
   fun throughputFth() {
-    val (d, n, p, q, k, nsd) = referenceSetting
-    val xs = fthList
+      val (d, n, p, q, k, nsd) = referenceSetting
+      val xs = fthList
 
-    // Raw throughput (succ)
-    val raw = names.map { name ->
-      xs.map { fth ->
-        val rlist = topoRange.flatMap { topoIdx ->
-          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name, fth) + ".txt")
+      // Raw throughput (succ)
+      val raw = names.map { name ->
+        xs.map { fth ->
+          val rlist = topoRange.flatMap { topoIdx ->
+            parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name, fth) + ".txt")
+          }
+          rlist.map { it.majorPaths.map { mp -> mp.succ.toDouble() }.sum() }.average()
         }
-        rlist.map { it.majorPaths.sumByDouble { mp -> mp.succ.toDouble() } }.average()
       }
-    }
 
-    // Qualified throughput (qualifiedSucc)
-    val qualified = names.map { name ->
-      xs.map { fth ->
-        val rlist = topoRange.flatMap { topoIdx ->
-          parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name, fth) + ".txt")
+      // Qualified throughput (qualifiedSucc)
+      val qualified = names.map { name ->
+        xs.map { fth ->
+          val rlist = topoRange.flatMap { topoIdx ->
+            parseLog("dist/" + id(n, topoIdx, q, k, p, d, nsd, name, fth) + ".txt")
+          }
+          rlist.map { it.majorPaths.map { mp -> mp.qualifiedSucc.toDouble() }.sum() }.average()
         }
-        rlist.map { it.majorPaths.sumByDouble { mp -> mp.qualifiedSucc.toDouble() } }.average()
       }
-    }
 
-    children += listOf(
-      """
-        {
-          "name": "${"throughput-fth-$d-$n-$p-$q-$k-$nsd".replace(".", "")}",
-          "solutionList": ${names.map { """ "${nameMapping[it] ?: it}" """ }},
-          "xTitle": "Fidelity threshold (F_th)",
-          "yTitle": "Throughput (eps)",
-          "x": $xs,
-          "y": $raw
-        }""".trimIndent(),
-      """
-        {
-          "name": "${"qualified-throughput-fth-$d-$n-$p-$q-$k-$nsd".replace(".", "")}",
-          "solutionList": ${names.map { """ "${nameMapping[it] ?: it}" """ }},
-          "xTitle": "Fidelity threshold (F_th)",
-          "yTitle": "Qualified throughput (eps)",
-          "x": $xs,
-          "y": $qualified
-        }""".trimIndent()
-    )
+      // Q-CAST raw is the first entry in raw (index 0 = "Online")
+      val qcastRaw = raw[0]
+
+      children += listOf(
+        """
+          {
+            "name": "${"throughput-fth-$d-$n-$p-$q-$k-$nsd".replace(".", "")}",
+            "solutionList": ${names.map { """ "${nameMapping[it] ?: it}" """ }},
+            "xTitle": "Fidelity threshold (F_th)",
+            "yTitle": "Throughput (eps)",
+            "x": $xs,
+            "y": $raw
+          }""".trimIndent(),
+        """
+          {
+            "name": "${"qualified-throughput-fth-$d-$n-$p-$q-$k-$nsd".replace(".", "")}",
+            "solutionList": ${(names.map { """ "${nameMapping[it] ?: it}" """ }) + """ "Q-CAST (raw)" """},
+            "xTitle": "Fidelity threshold (F_th)",
+            "yTitle": "Throughput (eps)",
+            "x": $xs,
+            "y": ${qualified + listOf(qcastRaw)}
+          }""".trimIndent()
+      )
   }
   
   fun efficiency() {
@@ -1746,6 +1749,61 @@ class Plot {
         }""".trimIndent()
     )
   }
+
+  fun throughputTauSigma() {
+    val tauSigmaList = listOf(0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0)
+    val fth = 0.7
+
+    val qualifiedResults = names.map { name ->
+      tauSigmaList.map { tauSigma ->
+        val tauTag = "%.1f".format(java.util.Locale.US, tauSigma)
+        val rlist = topoRange.flatMap { topoIdx ->
+          val fn = "dist/tausweep-${tauTag}-${topoIdx}-${name}.txt"
+          if (!java.io.File(fn).exists()) {
+            println("MISSING: $fn")
+            return@flatMap emptyList<Record>()
+          }
+          parseLog(fn)
+        }
+        if (rlist.isEmpty()) 0.0
+        else rlist.map { it.majorPaths.map { mp -> mp.qualifiedSucc.toDouble() }.sum() }.average()
+      }
+    }
+
+    val rawResults = names.map { name ->
+      tauSigmaList.map { tauSigma ->
+        val tauTag = "%.1f".format(java.util.Locale.US, tauSigma)
+        val rlist = topoRange.flatMap { topoIdx ->
+          val fn = "dist/tausweep-${tauTag}-${topoIdx}-${name}.txt"
+          if (!java.io.File(fn).exists()) return@flatMap emptyList<Record>()
+          parseLog(fn)
+        }
+        if (rlist.isEmpty()) 0.0
+        else rlist.map { it.majorPaths.map { mp -> mp.succ.toDouble() }.sum() }.average()
+      }
+    }
+
+    children += listOf(
+      """
+        {
+          "name": "qualified-throughput-vs-tausigma",
+          "solutionList": ${names.map { """ "${nameMapping[it] ?: it}" """ }},
+          "xTitle": "Hardware heterogeneity (sigma_tau)",
+          "yTitle": "Qualified throughput (eps)",
+          "x": $tauSigmaList,
+          "y": $qualifiedResults
+        }""".trimIndent(),
+      """
+        {
+          "name": "raw-throughput-vs-tausigma",
+          "solutionList": ${names.map { """ "${nameMapping[it] ?: it}" """ }},
+          "xTitle": "Hardware heterogeneity (sigma_tau)",
+          "yTitle": "Raw throughput (eps)",
+          "x": $tauSigmaList,
+          "y": $rawResults
+        }""".trimIndent()
+    )
+  }
   
   companion object {
     @JvmStatic
@@ -1765,6 +1823,8 @@ class Plot {
       p.rangeAnalysis()
       p.rangeAnalysisByDistance()
       
+      p.throughputTauSigma()
+
       // p.efficiency()
       // p.fairness()
       // p.recovery1()

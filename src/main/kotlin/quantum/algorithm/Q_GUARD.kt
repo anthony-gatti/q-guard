@@ -7,6 +7,7 @@ import quantum.tryPurifyOnEdge
 import utils.ReducibleLazyEvaluation
 import kotlin.math.pow
 import kotlin.math.roundToLong
+import quantum.randGen
 
 open class Q_GUARD(
     topo: Topo,
@@ -529,9 +530,36 @@ open class Q_GUARD(
             } else emptyList()
             }
 
-            val succ = deliveredFids.size
-            val estF = if (deliveredFids.isNotEmpty()) deliveredFids.average() else 0.0
-            val qualifiedSucc = deliveredFids.count { it + 1e-12 >= FTH }
+            /**
+            * end-to-end purification
+            * repeatedly take the 2 worst (still-unqualified) pairs, BBPSSW-purify them, keep output on success.
+            */
+            fun purifyEndToEndPool(poolIn: List<Double>, fth: Double): List<Double> {
+            val pool = poolIn.toMutableList()
+            while (true) {
+                if (pool.size < 2) break
+                pool.sortDescending()
+
+                val firstUnqualified = pool.indexOfFirst { it + 1e-12 < fth }
+                if (firstUnqualified == -1) break
+                if (pool.size - firstUnqualified < 2) break
+
+                val Fa = pool[firstUnqualified]
+                val Fb = pool[firstUnqualified + 1]
+                pool.removeAt(firstUnqualified + 1)
+                pool.removeAt(firstUnqualified)
+
+                val (Fp, ps) = Fidelity.purifyWernerOnce(Fa, Fb)
+                val success = randGen.nextDouble() <= ps
+                if (success) pool.add(Fp)
+            }
+            return pool
+            }
+
+            val purifiedPool = purifyEndToEndPool(deliveredFids, FTH)
+            val succ = purifiedPool.size
+            val estF = if (purifiedPool.isNotEmpty()) purifiedPool.average() else 0.0
+            val qualifiedSucc = purifiedPool.count { it + 1e-12 >= FTH }
 
             logWriter.append(""" ${majorPath.map { it.id }}, $width $succ $estF $qualifiedSucc""").append('\n')
 

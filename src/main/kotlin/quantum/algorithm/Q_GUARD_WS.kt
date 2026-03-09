@@ -9,6 +9,7 @@ import java.util.LinkedList
 import java.util.PriorityQueue
 import kotlin.collections.HashMap
 import kotlin.math.pow
+import quantum.randGen
 
 class Q_GUARD_WS(
     topo: Topo,
@@ -222,6 +223,9 @@ class Q_GUARD_WS(
             val wTh = Fidelity.wFromF(majorFth)
 
             val majorLens = hopLengths(majorPath)
+            val majorTaus = majorPath.dropLast(1).zip(majorPath.drop(1)).map { (u, v) ->
+                topo.linksBetween(u, v).firstOrNull()?.tau ?: Fidelity.DEFAULT_TAU
+            }
             val Lmajor = majorLens.sum()
             if (Lmajor <= 0.0) return@forEach
 
@@ -231,8 +235,8 @@ class Q_GUARD_WS(
                     val segDst = majorPath[i + l]
 
                     // Segment Werner budget split by physical segment length
-                    val depSeg = majorTaus.subList(i, i + l).sumOf { 1.0 / it }
-                    val depTotal = majorTaus.sumOf { 1.0 / it }
+                    val depSeg = majorTaus.subList(i, i + l).map { tau -> 1.0 / tau }.sum()
+                    val depTotal  = majorTaus.map { tau -> 1.0 / tau }.sum()
                     val wSeg = wTh.pow(depSeg / depTotal)
 
                     val pick = generateMajorWithBudget(segSrc, segDst, wSeg)
@@ -611,9 +615,36 @@ class Q_GUARD_WS(
                 } else emptyList()
             }
 
-            val succ = deliveredFids.size
-            val estF = if (deliveredFids.isNotEmpty()) deliveredFids.average() else 0.0
-            val qualifiedSucc = deliveredFids.count { it + 1e-12 >= FTH }
+            /**
+            * end-to-end purification
+            * repeatedly take the 2 worst (still-unqualified) pairs, BBPSSW-purify them, keep output on success.
+            */
+            fun purifyEndToEndPool(poolIn: List<Double>, fth: Double): List<Double> {
+            val pool = poolIn.toMutableList()
+            while (true) {
+                if (pool.size < 2) break
+                pool.sortDescending()
+
+                val firstUnqualified = pool.indexOfFirst { it + 1e-12 < fth }
+                if (firstUnqualified == -1) break
+                if (pool.size - firstUnqualified < 2) break
+
+                val Fa = pool[firstUnqualified]
+                val Fb = pool[firstUnqualified + 1]
+                pool.removeAt(firstUnqualified + 1)
+                pool.removeAt(firstUnqualified)
+
+                val (Fp, ps) = Fidelity.purifyWernerOnce(Fa, Fb)
+                val success = randGen.nextDouble() <= ps
+                if (success) pool.add(Fp)
+            }
+            return pool
+            }
+
+            val purifiedPool = purifyEndToEndPool(deliveredFids, FTH)
+            val succ = purifiedPool.size
+            val estF = if (purifiedPool.isNotEmpty()) purifiedPool.average() else 0.0
+            val qualifiedSucc = purifiedPool.count { it + 1e-12 >= FTH }
 
             logWriter.append(""" ${majorPath.map { it.id }}, $width $succ $estF $qualifiedSucc""").append('\n')
 

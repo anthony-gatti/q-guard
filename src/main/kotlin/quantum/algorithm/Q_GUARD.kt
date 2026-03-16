@@ -255,6 +255,19 @@ open class Q_GUARD(
         return true
     }
 
+    protected fun predictedE2E(path: Path): Double {
+        if (path.size < 2) return 0.0
+        var wProd = 1.0
+        val hopPairs = path.dropLast(1).zip(path.drop(1))
+        for ((u, v) in hopPairs) {
+            val best = topo.linksBetween(u, v)
+                .filter { it.entangled && it.assigned && it.notSwapped() && !it.utilized }
+                .maxBy { it.fidelity } ?: return 0.0
+            wProd *= Fidelity.wFromF(best.fidelity).coerceAtLeast(0.0)
+        }
+        return Fidelity.fFromW(wProd)
+    }
+
     // Recovery + swapping + purification stage
     override fun P4() {
         majorPaths.forEach { pathWithWidth ->
@@ -481,7 +494,9 @@ open class Q_GUARD(
                 // Runtime purification on the chosen path
                 maybePurifyAlongPath(chosenPath, chosenPerEdgeTarget, perHopTargetMajor)
 
-                if (!allHopsMeetTargets(chosenPath, chosenPerEdgeTarget, perHopTargetMajor)) continue
+                val estE2E = predictedE2E(chosenPath)
+                if (estE2E + 1e-12 < FTH) continue
+
 
                 // swaps along chosen path
                 chosenPath

@@ -1,18 +1,11 @@
 package quantum.algorithm
 
 import quantum.Fidelity
-import quantum.PurificationCostTable
 import quantum.topo.*
-import utils.ReducibleLazyEvaluation
-import utils.also
-import utils.pmap
-import utils.require
-import java.util.LinkedList
-import java.util.PriorityQueue
-import kotlin.collections.HashMap
 import kotlin.math.pow
+import kotlin.math.ln
+import kotlin.math.exp
 
-// Same P4 as Q-GUARD, but uses EXG for major path selection
 class Q_GUARD_FP(
     topo: Topo,
     allowRecoveryPaths: Boolean = true
@@ -20,198 +13,138 @@ class Q_GUARD_FP(
 
     override val name: String = "QG-FP"
 
-    // hook used to score candidates
     override fun scoreCandidate(path: Path, width: Int, oldP: DoubleArray): Double {
-        val base = topo.e(path, width, oldP)
-        if (base <= 0.0) return 0.0
+        return computeEXG(path, width)
+    }
+
+    private fun computeEXG(path: Path, width: Int): Double {
+        val hops = path.size - 1
+        if (hops <= 0) return 0.0
+        if (width <= 0) return 0.0
 
         val fth = fthFor(path.first(), path.last())
-        val y = predictedYieldEqualSplit(path, width, fth)
-        return if (y > 0.0) base * y else 0.0
-    }
 
-    // Replaces q-cast P2 with EXG path selection
-    override fun P2() {
-        require({ topo.isClean() })
-        majorPaths.clear()
-        recoveryPaths.clear()
-        pathToRecoveryPaths.clear()
+        // Determine purification round counts per hop
+        val rounds = effortRoundsForPath(path, width, fth)
+            ?: return 0.0  // infeasible
 
-        while (true) {
-            val candidates = generateMajors(srcDstPairs) // uses overridden scoreCandidate()
-            val pick = candidates.maxBy { it.first }
-            if (pick != null && pick.first > 0.0) {
-                pickAndAssignPath(pick)
-            } else {
-                break
-            }
+        // c_k = 2^r_k = raw pairs consumed per purified output on hop k
+        val costs = IntArray(hops) { k ->
+            val r = rounds[k]
+            if (r >= 31) return 0.0
+            1 shl r
         }
 
-        if (allowRecoveryPaths) {
-            recoveryPredBudget()
+        // M = max possible purified bottleneck width
+        val M = costs.map { width / it }.min()!!
+        if (M <= 0) return 0.0
+
+        // Per-hop link success probabilities
+        val hopPairs = path.dropLast(1).zip(path.drop(1))
+        val linkPs = hopPairs.map { (u, v) ->
+            val link = topo.linksBetween(u, v).first()
+            Math.E.pow(-topo.alpha * link.l)
         }
-    }
 
-    // recovery path generation, same as q-cast but uses segment fidelity budget
-    private fun recoveryPredBudget() {
-        majorPaths.forEach { majorPicked ->
-            val (_, _, majorPath) = majorPicked
-            val majorSrc = majorPath.first()
-            val majorDst = majorPath.last()
-            val majorFth = fthFor(majorSrc, majorDst)
+        // Compute Q^k_i = Pr[hop k produces exactly i purified pairs]
+        val Qprime = Array(hops) { k ->
+            val ck = costs[k]
+            val pk = linkPs[k]
+            val dist = DoubleArray(M + 1)
 
-            val Hmajor = majorPath.size - 1
-            if (Hmajor <= 0) return@forEach
-
-            val wTh = Fidelity.wFromF(majorFth)
-
-            (1..topo.k).forEach { l ->
-                (0..majorPath.size - l - 1).forEach { i ->
-                    val segSrc = majorPath[i]
-                    val segDst = majorPath[i + l]
-
-                    // Segment Werner budget: w_seg = w_th^(l / Hmajor)
-                    val wSeg = wTh.pow(l.toDouble() / Hmajor.toDouble())
-
-                    val pick = generateMajorWithBudget(segSrc, segDst, wSeg)
-                    if (pick != null && pick.first > 0.0) {
-                        pickAndAssignPath(pick, majorPicked)
-                    }
-                }
-            }
-        }
-    }
-
-    // finds maj paths for one s-d pair with fixed werner budget
-    private fun generateMajorWithBudget(src: Node, dst: Node, wBudget: Double): PickedPath? {
-        val maxM = minOf(src.remainingQubits, dst.remainingQubits)
-        if (maxM == 0) return null
-
-        var candidate: PickedPath? = null
-
-        for (w in (maxM downTo 1)) {
-            val failNodes = (topo.nodes - src - dst).filter { it.remainingQubits < 2 * w }.toHashSet()
-
-            val edges: HashSet<Edge> = topo.links
-                .filter { !it.assigned && it.n1 !in failNodes && it.n2 !in failNodes }
-                .groupBy { it.n1 to it.n2 }
-                .filter { it.value.size >= w }
-                .map { it.key }
-                .toHashSet()
-
-            val neighborsOf = ReducibleLazyEvaluation<Node, MutableList<Node>>({ mutableListOf() })
-            edges.forEach {
-                neighborsOf[it.n1].add(it.n2)
-                neighborsOf[it.n2].add(it.n1)
-            }
-
-            if (neighborsOf[src].isEmpty() || neighborsOf[dst].isEmpty()) continue
-
-            val prevFromSrc: HashMap<Node, Node> = hashMapOf()
-
-            fun getPathFromSrc(n: Node): MutableList<Node> {
-                val path = LinkedList<Node>()
-                var cur = n
-                while (cur != topo.sentinal) {
-                    path.addFirst(cur)
-                    cur = prevFromSrc[cur]!!
-                }
-                return path.toMutableList()
-            }
-
-            val E = topo.nodes.map { Double.NEGATIVE_INFINITY to DoubleArray(w + 1) { 0.0 } }.toTypedArray()
-            val q = PriorityQueue<quantum.topo.Edge>(Comparator { (o1, _), (o2, _) ->
-                -E[o1.id].first.compareTo(E[o2.id].first)
-            })
-
-            E[src.id] = Double.POSITIVE_INFINITY to DoubleArray(w + 1) { 0.0 }
-            q.offer(src to topo.sentinal)
-
-            while (q.isNotEmpty()) {
-                val (u, prev) = q.poll()
-                if (u in prevFromSrc) continue
-                prevFromSrc[u] = prev
-
-                if (u == dst) {
-                    candidate = E[u.id].first to w also getPathFromSrc(dst)
-                    break
-                }
-
-                neighborsOf[u].forEach { neighbor ->
-                    val tmp = E[u.id].second.clone()
-
-                    val path = getPathFromSrc(u) + neighbor
-                    val base = topo.e(path, w, tmp)
-                    val y = predictedYieldForBudget(path, w, wBudget)
-                    val e = if (base > 0.0 && y > 0.0) base * y else 0.0
-
-                    val newE = e to tmp
-                    val oldE = E[neighbor.id]
-
-                    if (oldE.first < newE.first) {
-                        E[neighbor.id] = newE
-                        q.offer(neighbor to u)
-                    }
+            for (j in 0..width) {
+                val bProb = binomialProb(width, j, pk)
+                val purified = j / ck  // floor division
+                if (purified >= M) {
+                    dist[M] += bProb  // cap at M
+                } else {
+                    dist[purified] += bProb
                 }
             }
 
-            if (candidate != null) break
+            dist
         }
 
-        return candidate
+        // Bottleneck recurrence over purified outputs
+        // P_i = Pr[min purified width across hops 1..k is exactly i]
+        var P = Qprime[0].clone()
+
+        for (k in 1 until hops) {
+            val newP = DoubleArray(M + 1)
+
+            // sumQ[i] = Pr[hop k produces >= i purified pairs]
+            val sumQ = DoubleArray(M + 2)
+            for (i in M downTo 0) {
+                sumQ[i] = sumQ[i + 1] + Qprime[k][i]
+            }
+
+            // sumP[i] = = Pr[bottleneck so far >= i]
+            val sumP = DoubleArray(M + 2)
+            for (i in M downTo 0) {
+                sumP[i] = sumP[i + 1] + P[i]
+            }
+
+            for (i in 0..M) {
+                newP[i] = P[i] * sumQ[i] + Qprime[k][i] * sumP[i + 1]
+            }
+
+            P = newP
+        }
+
+        // EXG = q^(h-1) * sum(i * P[i])
+        val numSwaps = (hops - 1).coerceAtLeast(0)
+        val qPath = topo.q.pow(numSwaps.toDouble())
+
+        var exg = 0.0
+        for (i in 1..M) {
+            exg += i * P[i]
+        }
+        exg *= qPath
+
+        return exg
     }
 
-    // Predicted yield using equal-split per-hop target derived from end-to-end Fth
-    // Yield is the bottleneck hop's 1 / 2^(roundsNeeded)
-    // Feasible only if 2^(roundsNeeded) <= width on every hop.
-    private fun predictedYieldEqualSplit(path: Path, width: Int, fthEndToEnd: Double): Double {
+    // equal-split round counts
+
+    private fun effortRoundsForPath(path: Path, width: Int, fthEndToEnd: Double): IntArray? {
         val hops = path.size - 1
-        if (hops <= 0) return 0.0
+        if (hops <= 0) return null
+        if (width <= 0) return null
 
-        val perHopTarget = Fidelity.perHopTargetF(fthEndToEnd, hops)
-        val hopInfo = topo.perHopFreshF(path)   // (edge, tau, F0)
+        val fth = fthEndToEnd.coerceAtLeast(0.25)
+        val perHopTarget = Fidelity.perHopTargetF(fth, hops)
 
-        var bottleneck = 1.0
+        val hopPairs = path.dropLast(1).zip(path.drop(1))
+        val rounds = IntArray(hops)
 
-        for ((edge, _, F0) in hopInfo) {
-            val rounds = PurificationCostTable.minCostToReach(F0, perHopTarget)
-            if (rounds == Int.MAX_VALUE) return 0.0
+        for (i in 0 until hops) {
+            val (u, v) = hopPairs[i]
+            val link = topo.linksBetween(u, v).first()
+            val F0 = Fidelity.freshLinkFidelity(link.tau)
 
-            // Need at least 2^rounds raw pairs on this hop; width is the per-hop cap in a slot.
-            if (rounds >= 31) return 0.0
-            val required = 1 shl rounds
-            if (required > width) return 0.0
+            val r = quantum.PurificationCostTable.minCostToReach(F0, perHopTarget)
+            if (r == Int.MAX_VALUE) return null  // infeasible
 
-            val hopYield = 1.0 / required.toDouble()
-            if (hopYield < bottleneck) bottleneck = hopYield
+            if (r >= 31) return null
+            if ((1 shl r) > width) return null
+
+            rounds[i] = r
         }
 
-        return bottleneck
+        return rounds
     }
 
-    // Predicted yield for recovery path when it is necessary to preserve budget
-    private fun predictedYieldForBudget(path: Path, width: Int, wBudget: Double): Double {
-        val hops = path.size - 1
-        if (hops <= 0) return 0.0
-        if (wBudget <= 0.0) return 0.0
+    private fun binomialProb(n: Int, k: Int, p: Double): Double {
+        if (k < 0 || k > n) return 0.0
+        if (p <= 0.0) return if (k == 0) 1.0 else 0.0
+        if (p >= 1.0) return if (k == n) 1.0 else 0.0
 
-        val wPerHop = wBudget.pow(1.0 / hops.toDouble())
-        val perHopTarget = Fidelity.fFromW(wPerHop)
-
-        val hopInfo = topo.perHopFreshF(path)
-
-        var bottleneck = 1.0
-
-        for ((_, _, F0) in hopInfo) {
-            val rounds = PurificationCostTable.minCostToReach(F0, perHopTarget)
-            if (rounds == Int.MAX_VALUE) return 0.0
-            if (rounds >= 31) return 0.0
-            val required = 1 shl rounds
-            if (required > width) return 0.0
-            val hopYield = 1.0 / required.toDouble()
-            if (hopYield < bottleneck) bottleneck = hopYield
+        var logProb = 0.0
+        for (i in 1..k) {
+            logProb += ln((n - i + 1).toDouble()) - ln(i.toDouble())
         }
+        logProb += k * ln(p) + (n - k) * ln(1.0 - p)
 
-        return bottleneck
+        return exp(logProb)
     }
 }

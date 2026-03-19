@@ -6,7 +6,7 @@ import kotlin.math.pow
 import kotlin.math.ln
 import kotlin.math.exp
 
-class Q_GUARD_FP(
+open class Q_GUARD_FP(
     topo: Topo,
     allowRecoveryPaths: Boolean = true
 ) : Q_GUARD(topo, allowRecoveryPaths) {

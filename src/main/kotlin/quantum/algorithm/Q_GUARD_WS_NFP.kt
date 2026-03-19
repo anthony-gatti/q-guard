@@ -141,29 +141,6 @@ class Q_GUARD_WS_NFP(
         }
     }
 
-    private fun predictedYieldWeighted(path: Path, width: Int, fthEndToEnd: Double): Double {
-        val rounds = effortRoundsForPath(path, width, fthEndToEnd) ?: return 0.0
-        var maxR = 0
-        for (r in rounds) if (r > maxR) maxR = r
-        if (maxR >= 31) return 0.0
-        val required = 1 shl maxR
-        if (required > width) return 0.0
-        return 1.0 / required.toDouble()
-    }
-
-    private fun predictedYieldForBudgetWeighted(path: Path, width: Int, wBudget: Double): Double {
-        if (wBudget <= 0.0) return 0.0
-        val fSeg = Fidelity.fFromW(wBudget).coerceAtLeast(0.25)
-        val rounds = effortRoundsForPath(path, width, fSeg) ?: return 0.0
-
-        var maxR = 0
-        for (r in rounds) if (r > maxR) maxR = r
-        if (maxR >= 31) return 0.0
-        val required = 1 shl maxR
-        if (required > width) return 0.0
-        return 1.0 / required.toDouble()
-    }
-
     override fun P4() {
         majorPaths.forEach { pathWithWidth ->
             val (_, width, majorPath) = pathWithWidth

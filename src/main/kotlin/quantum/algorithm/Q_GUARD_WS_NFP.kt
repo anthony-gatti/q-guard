@@ -378,10 +378,6 @@ class Q_GUARD_WS_NFP(
                 // Runtime purification on the chosen path
                 maybePurifyAlongPath(chosenPath, chosenPerEdgeTarget, perHopTargetFallback)
 
-                // End-to-end gate using actual current best hop pairs
-                val estE2E = predictedE2E(chosenPath)
-                if (estE2E + 1e-12 < FTH) continue
-
                 // swaps along chosen path
                 chosenPath
                     .dropLast(2)

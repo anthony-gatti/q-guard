@@ -494,10 +494,6 @@ open class Q_GUARD(
                 // Runtime purification on the chosen path
                 maybePurifyAlongPath(chosenPath, chosenPerEdgeTarget, perHopTargetMajor)
 
-                val estE2E = predictedE2E(chosenPath)
-                if (estE2E + 1e-12 < FTH) continue
-
-
                 // swaps along chosen path
                 chosenPath
                     .dropLast(2)

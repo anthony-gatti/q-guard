@@ -39,20 +39,20 @@ class Plot {
     )
   }
   
-  val nameMapping = mapOf("SL" to "SLMP", "Online" to "Q-CAST", "Online-R" to "Q-CAST\\\\R", "CR" to "Q-PASS", "CR-R" to "Q-PASS\\\\R", "Greedy_H" to "Greedy", "QG" to "Q-GUARD", "QG-FP" to "Q-GUARD-FP", "Q-CAST-PUR" to "Q-CAST-PUR", "QG-WS" to "Q-GUARD-WS")
+  val nameMapping = mapOf("SL" to "SLMP", "Online" to "Q-CAST", "Online-R" to "Q-CAST\\\\R", "CR" to "Q-PASS", "CR-R" to "Q-PASS\\\\R", "Greedy_H" to "Greedy", "QG" to "Q-GUARD", "QG-FP" to "Q-GUARD-FP", "Q-CAST-PUR" to "Q-CAST-PUR", "QG-WS" to "Q-GUARD-WS", "QG-WS-NFP" to "Q-GUARD-WS-NFP")
   // val names = listOf("Online", "SL", "Greedy_H", "CR")
-  val names = listOf("Online", "QG", "Q-CAST-PUR", "QG-FP", "QG-WS")
+  val names = listOf("Online", "QG", "Q-CAST-PUR", "QG-WS-NFP")
   
   fun throughputCdf() {
-    val nameMapping = mapOf("SL" to "SLMP", "Online" to "Q-CAST", "Greedy_H" to "Greedy", "QG" to "Q-GUARD", "QG-FP" to "Q-GUARD-FP", "Q-CAST-PUR" to "Q-CAST-PUR", "QG-WS" to "Q-GUARD-WS")
+    val nameMapping = mapOf("SL" to "SLMP", "Online" to "Q-CAST", "Greedy_H" to "Greedy", "QG" to "Q-GUARD", "QG-FP" to "Q-GUARD-FP", "Q-CAST-PUR" to "Q-CAST-PUR", "QG-WS" to "Q-GUARD-WS", "QG-WS-NFP" to "Q-GUARD-WS-NFP")
     // val names = listOf("Online", "SL", "Greedy_H", "CR", "BotCap", "SumDist", "MultiMetric")
-    val names = listOf("Online", "QG", "Q-CAST-PUR", "QG-FP", "QG-WS")
+    val names = listOf("Online", "QG", "Q-CAST-PUR", "QG-WS-NFP")
     
     (1..3).forEach { mode ->
       var (d, n, p, q, k, nsd) = referenceSetting
       if (mode == 2) p = 0.3
       else if (mode == 3) n = 400
-      val fth = 0.7
+      val fth = 0.75
       
       var max = 0
       
@@ -91,7 +91,7 @@ class Plot {
   
   fun throughputNsd() {
     val (d, n, p, q, k, nsd) = referenceSetting
-    val fth = 0.7
+    val fth = 0.75
     val results = names.map { name ->
       nsdList.sorted().map { nsd ->
         val rlist = topoRange.flatMap { topoIdx ->
@@ -205,7 +205,7 @@ class Plot {
   
   fun throughputD() {
     val (d, n, p, q, k, nsd) = referenceSetting
-    val fth = 0.7
+    val fth = 0.75
     val results = names.map { name ->
       dList.sorted().map { d ->
         val rlist = topoRange.flatMap { topoIdx ->
@@ -320,7 +320,7 @@ class Plot {
   
   fun throughputP() {
     val (d, n, p, q, k, nsd) = referenceSetting
-    val fth = 0.7
+    val fth = 0.75
     val results = names.map { name ->
       pList.sorted().map { p ->
         val rlist = topoRange.flatMap { topoIdx ->
@@ -442,7 +442,7 @@ class Plot {
   
   fun throughputN() {
     val (d, n, p, q, k, nsd) = referenceSetting
-    val fth = 0.7
+    val fth = 0.75
     val results = names.map { name ->
       nList.sorted().map { n ->
         val rlist = topoRange.flatMap { topoIdx ->
@@ -569,7 +569,7 @@ class Plot {
   
   fun throughputQ() {
     val (d, n, p, q, k, nsd) = referenceSetting
-    val fth = 0.7
+    val fth = 0.75
     val results = names.map { name ->
       qList.sorted().map { q ->
         val rlist = topoRange.flatMap { topoIdx ->
@@ -684,7 +684,7 @@ class Plot {
   
   fun throughputK() {
     val (d, n, p, q, k, nsd) = referenceSetting
-    val fth = 0.7
+    val fth = 0.75
     val results = names.map { name ->
       kList.sorted().map { k ->
         val rlist = topoRange.flatMap { topoIdx ->
@@ -861,7 +861,7 @@ class Plot {
         else listOf("Online", "Online-R", "CR", "CR-R")
       
       val (d, n, p, q, k, nsd) = referenceSetting
-      val fth = 0.7
+      val fth = 0.75
       var max = 0
       
       val channels = names.map { name ->
@@ -895,7 +895,7 @@ class Plot {
   
   fun fairness() {
     val (d, n, p, q, k, nsd) = referenceSetting
-    val fth = 0.7
+    val fth = 0.75
     
     var max = 0
     
@@ -935,7 +935,7 @@ class Plot {
     val q = qList.first()
     val k = kList.first()
     val d = dList.first()
-    val fth = 0.7
+    val fth = 0.75
     
     pList.forEach { p ->
       for (n in nList.sorted()) {
@@ -992,7 +992,7 @@ class Plot {
   
   fun rp2Cdf_nsd() {
     val (d, n, p, q, k, nsd) = referenceSetting
-    val fth = 0.7
+    val fth = 0.75
     var max1 = 0
     val result1 =
       nsdList.sorted().map { nsd ->
@@ -1144,7 +1144,7 @@ class Plot {
   
   fun rp2Cdf_n() {
     val (d, n, p, q, k, nsd) = referenceSetting
-    val fth = 0.7
+    val fth = 0.75
     var max1 = 0
     val result1 =
       nList.sorted().map { n ->
@@ -1252,7 +1252,7 @@ class Plot {
   
   fun rp2Nsd() {
     val (d, n, p, q, k, nsd) = referenceSetting
-    val fth = 0.7
+    val fth = 0.75
     val names = listOf("Online", "Online-R")
     
     val results = names.map { name ->
@@ -1298,7 +1298,7 @@ class Plot {
   
   fun rp2N() {
     val (d, n, p, q, k, nsd) = referenceSetting
-    val fth = 0.7
+    val fth = 0.75
     
     val names = listOf("Online", "Online-R")
     
@@ -1414,7 +1414,7 @@ class Plot {
   fun rangeAnalysis() {
     val (d, n, p, q, k, _) = referenceSetting
     val nsd = 1
-    val fth = 0.70
+    val fth = 0.75
 
     // Parse topology from any log file (same for all algorithms)
     val sampleFn = "dist/" + id(n, 1, q, k, p, d, nsd, names.first(), fth) + ".txt"
@@ -1572,7 +1572,7 @@ class Plot {
   fun rangeAnalysisByDistance() {
     val (d, n, p, q, k, _) = referenceSetting
     val nsd = 1
-    val fth = 0.70
+    val fth = 0.75
 
     val sampleFn = "dist/" + id(n, 1, q, k, p, d, nsd, names.first(), fth) + ".txt"
     val topoInfo = parseTopologyFromLog(sampleFn)
@@ -1752,7 +1752,7 @@ class Plot {
 
   fun throughputTauSigma() {
     val tauSigmaList = listOf(0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0)
-    val fth = 0.7
+    val fth = 0.75
 
     val qualifiedResults = names.map { name ->
       tauSigmaList.map { tauSigma ->

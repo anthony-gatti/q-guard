@@ -12,8 +12,8 @@ val randGen = Random(19900111L)
 val edgeLen = 100.0
 val maxSearchHops = 15
 
-var nList = listOf(200, 50, 200, 400, 800)
-val dList = listOf(6, 5, 4, 3)
+var nList = listOf(100, 50, 200, 400)
+val dList = listOf(6, 2, 3, 4, 5)
 val kList = listOf(3, 6, 0, 10000)
 val qList = listOf(0.9, 0.8, 0.85, 0.95, 1.0)
 val pList = listOf(0.7, 0.5, 0.6, 0.8, 0.9, 1.0)

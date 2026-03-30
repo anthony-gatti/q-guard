@@ -639,7 +639,7 @@ ${links.groupBy { it.n1 to it.n2 }.map { entry ->
       lengthClampMin: Double = 0.6,
       lengthClampMax: Double = 1.8,
       tauMean: Double = 9.5,
-      tauSigma: Double = 1.5 // heterogeneity control
+      tauSigma: Double = 1.0 // heterogeneity control
     ): Topo {
       val alpha: Double = a
       val nodeLocs = mutableListOf<DoubleArray>()

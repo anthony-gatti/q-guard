@@ -112,7 +112,7 @@ fun sim() {
   }
 
   // === TAU SIGMA SWEEP ===
-  val tauSigmaList = listOf(0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0)
+  val tauSigmaList = listOf(0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0)
   val (d0, n0, p0, q0, k0, nsd0) = referenceSetting
   val sweepFth = 0.75
   val sweepRepeat = 1000

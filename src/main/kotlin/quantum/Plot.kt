@@ -39,12 +39,12 @@ class Plot {
     )
   }
   
-  val nameMapping = mapOf("SL" to "SLMP", "Online" to "Q-CAST", "Online-R" to "Q-CAST\\\\R", "CR" to "Q-PASS", "CR-R" to "Q-PASS\\\\R", "Greedy_H" to "Greedy", "QG" to "Q-GUARD", "QG-FP" to "Q-GUARD-FP", "Q-CAST-PUR" to "Q-CAST-PUR", "QG-WS" to "Q-GUARD-WS", "QG-WS-NFP" to "Q-GUARD-WS-NFP")
+  val nameMapping = mapOf("SL" to "SLMP", "Online" to "Q-CAST", "Online-R" to "Q-CAST\\\\R", "CR" to "Q-PASS", "CR-R" to "Q-PASS\\\\R", "Greedy_H" to "Greedy", "QG" to "Q-GUARD", "QG-FP" to "Q-GUARD-FP", "Q-CAST-PUR" to "Q-CAST-PUR", "QG-WS-NFP" to "Q-GUARD-WS")
   // val names = listOf("Online", "SL", "Greedy_H", "CR")
   val names = listOf("Online", "QG", "Q-CAST-PUR", "QG-WS-NFP")
   
   fun throughputCdf() {
-    val nameMapping = mapOf("SL" to "SLMP", "Online" to "Q-CAST", "Greedy_H" to "Greedy", "QG" to "Q-GUARD", "QG-FP" to "Q-GUARD-FP", "Q-CAST-PUR" to "Q-CAST-PUR", "QG-WS" to "Q-GUARD-WS", "QG-WS-NFP" to "Q-GUARD-WS-NFP")
+    val nameMapping = mapOf("SL" to "SLMP", "Online" to "Q-CAST", "Greedy_H" to "Greedy", "QG" to "Q-GUARD", "QG-FP" to "Q-GUARD-FP", "Q-CAST-PUR" to "Q-CAST-PUR", "QG-WS-NFP" to "Q-GUARD-WS")
     // val names = listOf("Online", "SL", "Greedy_H", "CR", "BotCap", "SumDist", "MultiMetric")
     val names = listOf("Online", "QG", "Q-CAST-PUR", "QG-WS-NFP")
     
@@ -435,7 +435,8 @@ class Plot {
           "x": ${pList.sorted()},
           "solutionList": ${names.map { """ "${nameMapping[it] ?: it}" """ }},
           "yTitle": "# succ S-D pairs",
-          "y": ${results3Q}
+          "y": ${results3Q},
+          "yLimit": [0.0, 6.5]
         }""".trimIndent()
     )
   }
@@ -780,7 +781,8 @@ class Plot {
           "xTicks&Labels": [${listOf(0, 3, 6, 9)}, ["0", "3", "6", "∞"]],
           "solutionList": ${names.map { """ "${nameMapping[it] ?: it}" """ }},
           "yTitle": "Throughput (eps)",
-          "y": ${resultsQ}
+          "y": ${resultsQ},
+          "yLimit": [0, 32]
         }""".trimIndent(), """
         {
           "name": "${"qualified-succ-paths-$d-$n-$p-$q-k-$nsd".replace(".", "")}",
@@ -835,7 +837,7 @@ class Plot {
           {
             "name": "${"throughput-fth-$d-$n-$p-$q-$k-$nsd".replace(".", "")}",
             "solutionList": ${names.map { """ "${nameMapping[it] ?: it}" """ }},
-            "xTitle": "Fidelity threshold (F_th)",
+            "xTitle": "Fidelity threshold",
             "yTitle": "Throughput (eps)",
             "x": $xs,
             "y": $raw
@@ -844,10 +846,11 @@ class Plot {
           {
             "name": "${"qualified-throughput-fth-$d-$n-$p-$q-$k-$nsd".replace(".", "")}",
             "solutionList": ${(names.map { """ "${nameMapping[it] ?: it}" """ }) + """ "Q-CAST (raw)" """},
-            "xTitle": "Fidelity threshold (F_th)",
+            "xTitle": "Fidelity threshold",
             "yTitle": "Throughput (eps)",
             "x": $xs,
-            "y": ${qualified + listOf(qcastRaw)}
+            "y": ${qualified + listOf(qcastRaw)},
+            "yLimit": [0, 49]
           }""".trimIndent()
       )
   }
@@ -1531,7 +1534,7 @@ class Plot {
           "name": "range-qualified-success-rate-by-hop",
           "solutionList": ${activeNames.map { """ "${nameMapping[it] ?: it}" """ }},
           "xTitle": "Shortest-path hop count",
-          "yTitle": "P(pair served with qualified ebit)",
+          "yTitle": "P(pair served)",
           "x": $validHops,
           "y": $qualifiedSuccessRates,
           "yLimit": [0, 1.05]
@@ -1714,7 +1717,7 @@ class Plot {
           "name": "range-qualified-success-rate-by-distance",
           "solutionList": ${activeNames.map { """ "${nameMapping[it] ?: it}" """ }},
           "xTitle": "Euclidean S-D distance (km)",
-          "yTitle": "P(pair served with qualified ebit)",
+          "yTitle": "P(pair served)",
           "x": $xs,
           "y": $qualifiedSuccessRates,
           "yLimit": [0, 1.05]
@@ -1751,7 +1754,7 @@ class Plot {
   }
 
   fun throughputTauSigma() {
-    val tauSigmaList = listOf(0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0)
+    val tauSigmaList = listOf(0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0)
     val fth = 0.75
 
     val qualifiedResults = names.map { name ->
@@ -1788,16 +1791,17 @@ class Plot {
         {
           "name": "qualified-throughput-vs-tausigma",
           "solutionList": ${names.map { """ "${nameMapping[it] ?: it}" """ }},
-          "xTitle": "Hardware heterogeneity (sigma_tau)",
-          "yTitle": "Qualified throughput (eps)",
+          "xTitle": "Hardware heterogeneity (η)",
+          "yTitle": "Throughput (eps)",
           "x": $tauSigmaList,
-          "y": $qualifiedResults
+          "y": $qualifiedResults,
+          "yLimit": [0, 32]
         }""".trimIndent(),
       """
         {
           "name": "raw-throughput-vs-tausigma",
           "solutionList": ${names.map { """ "${nameMapping[it] ?: it}" """ }},
-          "xTitle": "Hardware heterogeneity (sigma_tau)",
+          "xTitle": "Hardware heterogeneity (η)",
           "yTitle": "Raw throughput (eps)",
           "x": $tauSigmaList,
           "y": $rawResults

@@ -1,8 +1,8 @@
-FROM ubuntu:focal
-ENV DEBIAN_FRONTEND=noninteractive
+FROM maven:3.9.9-eclipse-temurin-17
 
-RUN     apt update && apt install maven git python3 python3-pip texlive fonts-linuxlibertine ttf-mscorefonts-installer -y && cd /root && git clone https://github.com/sshi27/QuantumRouting \
-        && cd QuantumRouting && mvn compile && cd .. && git clone https://github.com/sshi27/plot && cd plot && \
-        pip3 install -r requirements.txt && apt clean
+WORKDIR /workspace/q-guard
+COPY pom.xml ./
+COPY src ./src
+RUN mvn -B compile
 
-WORKDIR  /root/
+CMD ["mvn", "exec:java", "-Dexec.mainClass=quantum.Main"]

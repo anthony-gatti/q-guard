@@ -1,143 +1,100 @@
-# Repo for *Concurrent Entanglement Routing for Quantum Networks: Model and Designs*
+# Q-GUARD
 
-## Abstract
+Kotlin simulator and experiment code for Q-GUARD, a fidelity-aware entanglement-routing protocol with distributed purification planning, and its weighted-split extension, Q-GUARD-WS.
 
-Quantum entanglement enables a number of important applications such as quantum key distribution. Based on quantum entanglement, quantum networks are built to enable long-distance secret sharing between two remote communication parties. Establishing a multi-hop quantum entanglement exhibits a high failure rate and existing quantum networks rely on trusted repeater nodes to transmit quantum bits. However, when the scale of a quantum network increases, it is required to have end-to-end multi-hop quantum entanglements in order to deliver secret bits without letting the repeaters know the secret bits. This work focuses on the entanglement routing problem, whose objective is to build long-distance entanglements for the concurrent source-destination pairs through multiple hops. Different from existing works that analyzes the traditional routing techniques on special network topologies, we present a comprehensive entanglement routing model that reflects the differences between quantum networks and classical networks and a new entanglement routing algorithm that utilizes the unique properties of quantum networks. Evaluation results show that the proposed algorithm **Q-CAST** increases the number of successful long-distance entanglements by a big margin compared to other methods. The model and simulator developed by this work may encourage more network researchers to study the entanglement routing problem.
+**Paper:** [Fidelity-Guaranteed Entanglement Routing with Distributed Purification Planning](https://arxiv.org/abs/2605.00246), Anthony Gatti, Anoosha Fayyaz, Prashant Krishnamurthy, Kaushik P. Seshadreesan, and Amy Babay.
 
-Our paper will appear in ACM SIGCOMM 2020.  
+This code builds on [Q-CAST / QuantumRouting](https://github.com/sshi27/QuantumRouting) by Shouqian Shi and Chen Qian. It retains the topology model, routing infrastructure, and Q-CAST baseline, and adds fidelity tracking, purification, Q-GUARD variants, and fidelity-qualified evaluation.
 
-**Paper Link:** https://users.soe.ucsc.edu/~qian/papers/QuantumRouting.pdf
+## Build and run
 
-## Repository Structure
-
-- `src/main/kotlin`         source code root. **Under this directory:**
-- `utils`                   utilities functions
-- `quantum/algorithm`       quantum routing algorithms, including Q-PASS, Q-CAST, SLMP, Greedy, and more
-- `quantum/topo`            abstractions for components in a quantum network: links, nodes, and the quantum network
-- `quantum/Visualizer.kt`   a graphical interface for easy algorithm debugging, comprehending, and improving. 
-- `quantum/Plot.kt`         generates all simulation figure data
-- `quantum/Analytical.kt`   generates all analytical figure data
-
-
-## Hardware and Software requirements. 
-
-Hardware requirements: 
-A commodity server or a virtual/cloud/hosted server with the hardware:
-  - Internet access
-  - 16GiB RAM
-  - A powerful CPU, e.g., Intel(R) Core(TM) i7-7700 CPU @ 3.60GHz
-  - 1.8GiB HDD/SSD available for logging and plotting
-
-Software requirements: 
-  - Any OS with lasted Docker and Git installed. For completeness, we put the installation steps later in the PS. 
-
-## Run demo with GUI
+Requirements: a JDK and Maven. The simulator has been compiled with **OpenJDK 17 and Maven 3.9.9**; Kotlin and JVM dependencies are specified in `pom.xml`.
 
 ```bash
-# 1. *This step is platform-specific* 
-# Install Java >= 8, maven >= 3.6, Python >= 3.8, for simulation, and install texlive and fonts [linuxlibertine & times new roman] for figure plotting. 
-# For Ubuntu >= 20.04
-apt install maven python3 python3-pip texlive fonts-linuxlibertine ttf-mscorefonts-installer -y
-# if you use other OSes: please try installing by yourself, or try our docker image without GUI. No influences on the final simulation results. 
-
-# 2. Download source codes
-git clone https://github.com/sshi27/QuantumRouting
-git clone https://github.com/sshi27/plot
-
-# 3. Run the plot daemon
-cd plot
-python3.8 -m pip install -r requirements.txt
-python3.8 file-watcher.py &
-
-# 4. Run simulations
-cd ../QuantumRouting
+git clone https://github.com/anthony-gatti/q-guard.git
+cd q-guard
 mvn compile
-mvn exec:java -D"exec.mainClass"="quantum.Main"
-# A GUI window showing the routing process should appear, if a window system is properly set. 
-# Or a warning should appear, input `Y` and press [Enter] to continue. 
-
-# 5. Plot figures in our paper
-mvn exec:java -D"exec.mainClass"="quantum.AnalyticalPlot"
-mvn exec:java -D"exec.mainClass"="quantum.Plot"
-
-# 6. Figures are under ../plot/dist
+mvn exec:java -Dexec.mainClass=quantum.Main
 ```
 
-## Run demo in Docker and without GUI
+Run commands from the repository root. The simulation runs without a GUI, creates `dist/`, and writes one text log per algorithm and configuration. **The default command runs the full configured experiment suite**, including the hardware-heterogeneity sweep; it is not a short demo.
+
+The separate plotting repository is **only required to render figures**. You do not need another copy of the Q-CAST simulator.
+
+## Plot figures
+
+Use the original [`sshi27/plot`](https://github.com/sshi27/plot) repository, as described in the [Q-CAST README](https://github.com/sshi27/QuantumRouting#run-demo-with-gui). Keep it next to `q-guard`, with the directory name `plot`: `q-guard/` and `plot/` must share a parent directory. Q-GUARD writes plotting data to `../plot/last-plot-data.json`.
+
+In a separate terminal, starting from `q-guard/`:
 
 ```bash
-# 0. Download source codes
-git clone https://github.com/sshi27/QuantumRouting
-cd QuantumRouting
-
-# 1. run container
-docker build -t quantum_routing . && docker run -it --rm quantum_routing bash
-# This takes some time (typically < 10min), subject to your Internet bandwidth and processing power of your machine. 
-# In this step, a brand new minimal Ubuntu 20.04 is pulled as the base docker image,
-# and our simulator and figure plotter are pulled from the Internet and initialized. 
-
-# 2. Run the plot daemon
-cd plot
-python3 file-watcher.py &
-
-# 3. Run all simulations
-cd ../QuantumRouting
-mvn exec:java -D"exec.mainClass"="quantum.Main"
- # A warning should appear, input `Y` and press [Enter]
-
-# 4. Plot all experimental figures in our paper
-mvn exec:java -D"exec.mainClass"="quantum.AnalyticalPlot"
-mvn exec:java -D"exec.mainClass"="quantum.Plot"
-
-# 5. Figures are under ../plot/dist
+git clone https://github.com/sshi27/plot.git ../plot
+cd ../plot
+python3.11 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt "matplotlib==3.7.5" "numpy<2"
+MPLBACKEND=Agg python file-watcher.py
 ```
 
-## Hacking the code
-Each algorithm under `quantum/algorithm` directory is an individual algorithm, or a set of similar algorithms.
-Basically, you create a new routing algorithm in two steps: 
-1) Extend class `quantum.algorithm` or its existing subclasses
-2) Define the behaviors of a routing algorithm in P2 and P4, by implementing the three abstract methods: 
-```kotlin
-  abstract fun prepare()
-  abstract fun P2()
-  abstract fun P4()
-```
+The upstream plotter uses `Tick.label`, which was [removed in Matplotlib 3.8](https://matplotlib.org/3.8.0/api/prev_api_changes/api_changes_3.8.0.html#unused-methods-in-axis-tick-xaxis-and-yaxis). Use Python 3.10 or 3.11 with the compatibility constraints above rather than installing the latest Matplotlib. `MPLBACKEND=Agg` allows rendering on a server without a display. The bundled font is loaded relative to the plotter's working directory, so start the watcher from `plot/`. For the intended typography, install Linux Libertine as a system font (for example, `sudo apt install fonts-linuxlibertine` on Debian/Ubuntu); otherwise Matplotlib may use a fallback font.
 
-You can refer to "GreedyHopRouting.kt" as a simple start point.
+With the watcher running, return to `q-guard/` in the simulation terminal and generate the figure data:
 
-## Plot with partial logging data
-A whole simulation round takes typically ~ 1 day on a powerful multi-core CPU (e.g. i7-7700), and each pass takes about 2 GiB of disk space for logging. 
-The current number of rounds is set to 1, which is enough for all simulation results and graph plotting. You can change the number of rounds at `src\main\kotlin\quantum\configs.kt:21`
-
-During a multi-round simulation, you can stop the simulation and still get the complete set of graphs, if a single round is completed (when a file `dist/50#2-0.9-3-0.6-6-10-CR.txt` exists). You can even stop anywhere and run plotting based on the current partial logs. Some points on the figures may be missing, though. 
-
-
-Detailed steps: 
-0. Keep the simulation running, just in case. And open another terminal, or press ctrl+z to halt the simulation without terminating it. 
-
-1. Make sure the plotting script is running
 ```bash
-ps aux | grep file-watcher
+mvn exec:java -Dexec.mainClass=quantum.Plot
 ```
-2. If something like "python file-watcher.py" is shown, then skip this step. Else, please run
+
+The watcher renders PDFs into `../plot/dist/` and saves plotting-data snapshots in `../plot/back/`. Start it **before** running `quantum.Plot`; it reacts to file changes. The current Q-GUARD figure configuration disables LaTeX rendering, so TeX installation is not required for these figures.
+
+Plotting expects the logs selected by `configs.kt` and `Plot.kt`. Missing or incomplete logs can produce empty or invalid series. In particular, the throughput-CDF routine also requests a `p = 0.3` case that is outside the default `pList`; generate matching data or adjust the plotted cases before interpreting that figure.
+
+## Algorithms
+
+The default experiment compares these four implementations:
+
+| Source file in `src/main/kotlin/quantum/algorithm/` | Log name | Role |
+| --- | --- | --- |
+| `OnlineAlgorithm.kt` | `Online` | Q-CAST baseline; also the superclass of Q-GUARD |
+| `Q_CAST_PUR.kt` | `Q-CAST-PUR` | Q-CAST with purification baseline |
+| `Q_GUARD.kt` | `QG` | Q-GUARD |
+| `Q_GUARD_WS_NFP.kt` | `QG-WS-NFP` | Weighted-split variant labeled **Q-GUARD-WS** in the current plots |
+
+`Q_GUARD_FP.kt` and `Q_GUARD_WS.kt` are additional research variants and are not enabled in the default suite. Despite its filename, `Q_GUARD_WS.kt` is not the implementation selected by the current Q-GUARD-WS plots. The older `FidelityGuaranteedOnlineAlgorithm.kt` and `FidelityGuaranteedRouting.kt` prototypes are retained separately from the active comparisons.
+
+## Experiment configuration
+
+- [`configs.kt`](src/main/kotlin/quantum/configs.kt) defines node counts, average degrees, link and swap success probabilities, local-information ranges, concurrent request counts, topology indices, and fidelity thresholds. `allAvailableSettings` varies one parameter at a time around `referenceSetting`.
+- [`main.kt`](src/main/kotlin/quantum/main.kt) selects algorithms, sets the number of simulated slots (`repeat` and `sweepRepeat`, both 1,000 by default), and defines the separate `tauSigma` sweep.
+- [`Plot.kt`](src/main/kotlin/quantum/Plot.kt) selects figures, algorithms, and log configurations to read.
+
+The default reference setting is 100 nodes, average degree 6, mean link success probability 0.7, swap success probability 0.9, `k = 3`, and 10 simultaneous source-destination pairs. The standard sweep uses a fidelity threshold of 0.75, with additional threshold values evaluated at the reference setting. `topoRange` currently contains one topology index.
+
+Logs contain per-slot path results and a topology footer. Completed logs are skipped on subsequent runs when the completion separator is present. When changing code or configurations, move existing `dist/` logs aside or use a fresh checkout so old outputs are not mistaken for new results.
+
+Topology and request generation use explicit seeds, but concurrent solvers share a random-number generator. A fixed seed alone does not guarantee identical stochastic outcomes across parallel runs.
+
+## Repository structure
+
+| Path | Contents |
+| --- | --- |
+| `src/main/kotlin/quantum/algorithm/` | Routing algorithms and Q-GUARD variants |
+| `src/main/kotlin/quantum/topo/` | Topology, nodes, links, and delivered-pair fidelity accounting |
+| `src/main/kotlin/quantum/Fidelity.kt` | Werner-state fidelity and BBPSSW calculations |
+| `src/main/kotlin/quantum/PurificationUtils.kt` | Purification execution and planning helpers |
+| `src/main/kotlin/quantum/main.kt` | Simulation entry point, `quantum.Main` |
+| `src/main/kotlin/quantum/configs.kt` | Experiment settings and log parsing |
+| `src/main/kotlin/quantum/Plot.kt` | Figure-data entry point, `quantum.Plot` |
+| `src/main/kotlin/quantum/Visualizer.kt` | Optional Swing debugging utility |
+| `src/main/kotlin/utils/` | Shared utilities |
+
+## Docker
+
+The image builds **this checkout** and runs the simulation. Plotting remains a separate host-side step using the instructions above.
+
 ```bash
-cd plot
-python3 file-watcher.py &
+docker build -t q-guard .
+mkdir -p dist
+docker run --rm -v "$(pwd)/dist:/workspace/q-guard/dist" q-guard
 ```
 
-3. Continue in the previous terminal: 
-```bash
-cd ../QuantumRouting
-mvn exec:java -D"exec.mainClass"="quantum.Plot"
-```
-
-4. Find generated figures. 
-```bash
-cd ../plot/dist && ls
-```
-
-
-## Authors
-
-- Shouqian Shi(sshi27@ucsc.edu)
-- Chen Qian(cqian12@ucsc.edu)
+The mounted directory preserves simulation logs after the container exits. This runs the same full experiment suite as the Maven command.

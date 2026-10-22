@@ -63,63 +63,6 @@ data class RecoveryPath1(val path: IntArray, val occupiedChannels: Int, val good
 data class MajorPath(val path: IntArray, val width: Int, val succ: Int, val type: Type, val recoveryPaths: MutableList<RecoveryPath2>, val qualifiedSucc: Int)
 data class Record(val ops: List<Pair<Int, Int>>, val majorPaths: MutableList<MajorPath>, var rpCnt: Int, var rpChannelCnt: Int)
 
-// fun parseLog(fn: String): List<Record> {
-//   val f = File(fn)
-//   if (records[f.nameWithoutExtension].isEmpty()) try {
-//     var currRecord = null as Record?
-//     var currMajorPath = null as MajorPath?
-    
-//     for (line in f.readLines()) {
-//       if (line.startsWith("-----")) continue
-//       if (line.trim().isEmpty()) continue
-//       try {
-//         val indent = line.takeWhile { it == ' ' }.length
-//         if (indent == 0) {
-//           currMajorPath = null
-//           if (currRecord != null) {
-//             records[f.nameWithoutExtension].add(currRecord)
-//           }
-//           currRecord = Record(line.split(Regex("""[^\d]+""")).map { it.toInt() }.chunked(2).map { it.toPair() }, mutableListOf(), 0, 0)
-//         } else if (indent == 1) {
-//           if (line.contains("recovery")) {
-//             val seg = line.trim().split(Regex("""[^\d]+""")).drop(1).dropLast(1)
-//             val (taken) = seg.takeLast(1).map { it.toInt() }
-//             currRecord!!.rpCnt += 1
-//             currRecord!!.rpChannelCnt += taken
-//           } else {
-//             if (!line.contains("[") || !line.contains("],")) throw Exception("incomplete")
-//             var l = line
-            
-//             var type = Type.Online
-//             if (line.contains("//")) {
-//               if (line.contains("offline")) type = Type.Offline
-              
-//               l = line.split("//")[0].trim()
-//             }
-            
-//             val seg = l.trim().split(Regex("""[^\d]+""")).drop(1)
-//             val (width, succ) = seg.takeLast(2).map { it.toInt() }
-            
-//             currMajorPath = MajorPath(seg.dropLast(2).map { it.toInt() }.toIntArray(), width, succ, type, mutableListOf())
-//             if (currMajorPath.path.first() to currMajorPath.path.last() !in currRecord!!.ops) throw Exception("incomplete")
-//             currRecord.majorPaths.add(currMajorPath)
-//           }
-//         } else {
-//           val seg = line.trim().split(Regex("""[^\d]+""")).drop(1)
-//           val (width, succ, taken) = seg.takeLast(3).map { it.toInt() }
-          
-//           currMajorPath!!.recoveryPaths.add(RecoveryPath2(seg.dropLast(3).map { it.toInt() }.toIntArray(), width, succ, taken))
-//         }
-//       } catch (e: Exception) {
-//         currRecord = null
-//         currMajorPath = null
-//       }
-//     }
-//   } catch (e: Exception) {
-//   }
-//   return records[f.nameWithoutExtension]
-// }
-
 fun parseLog(fn: String): List<Record> {
   val f = File(fn)
   if (records[f.nameWithoutExtension].isEmpty()) try {
